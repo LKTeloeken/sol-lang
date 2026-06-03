@@ -385,7 +385,7 @@ func (vm *VM) startCall(label string, nArgs int) error {
 		}
 	}
 	if ci.Super != nil {
-		locals["eclipse"] = vm.superView(this, ci.Super)
+		locals["enlights"] = vm.superView(this, ci.Super)
 	}
 
 	target, ok := vm.labels[label]
@@ -598,7 +598,7 @@ func (vm *VM) store(target string, val Value) error {
 			return fmt.Errorf("cannot assign field on non-object")
 		}
 		obj.Object.Fields[field] = val
-		if rootName == "this" || rootName == "eclipse" {
+		if rootName == "this" || rootName == "enlights" {
 			if len(vm.frames) > 0 {
 				vm.frames[len(vm.frames)-1].locals[rootName] = obj
 			}

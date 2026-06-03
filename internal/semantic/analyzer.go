@@ -193,7 +193,7 @@ func (a *Analyzer) checkClass(c *ast.ClassDecl) {
 	a.pushScope()
 	a.scopes[len(a.scopes)-1].Define(&Symbol{Name: "this", Kind: SymVar, Type: classType(c.Name), Pos: c.Pos()})
 	if info.Super != nil {
-		a.scopes[len(a.scopes)-1].Define(&Symbol{Name: "eclipse", Kind: SymVar, Type: classType(info.SuperName), Pos: c.Pos()})
+		a.scopes[len(a.scopes)-1].Define(&Symbol{Name: "enlights", Kind: SymVar, Type: classType(info.SuperName), Pos: c.Pos()})
 	}
 	for _, m := range c.Members {
 		switch mm := m.(type) {
@@ -429,9 +429,9 @@ func (a *Analyzer) checkExpr(e ast.Expr) *ast.TypeDesc {
 		} else {
 			result = classType(a.curClass.Name)
 		}
-	case *ast.EclipseExpr:
+	case *ast.EnlightsExpr:
 		if a.curClass == nil || a.curClass.Super == nil {
-			a.err(ex.Pos(), "eclipse used without superclass")
+			a.err(ex.Pos(), "enlights used without superclass")
 			result = &ast.TypeDesc{Base: "void"}
 		} else {
 			result = classType(a.curClass.SuperName)

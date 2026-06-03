@@ -19,10 +19,10 @@ const (
 	IDENT
 
 	// Sun-themed keywords
-	SHINE
+	RISE
 	RAY
 	GLOW
-	ECLIPSE
+	ENLIGHTS
 	EMIT
 	FLARE
 
@@ -83,10 +83,10 @@ const (
 )
 
 var keywords = map[string]Type{
-	"shine":   SHINE,
-	"ray":     RAY,
-	"glow":    GLOW,
-	"eclipse": ECLIPSE,
+	"rise":      RISE,
+	"ray":       RAY,
+	"glow":      GLOW,
+	"enlights":  ENLIGHTS,
 	"emit":    EMIT,
 	"flare":   FLARE,
 	"public":  PUBLIC,
@@ -139,14 +139,14 @@ func (t Type) String() string {
 		return "NULL"
 	case IDENT:
 		return "IDENT"
-	case SHINE:
-		return "shine"
+	case RISE:
+		return "rise"
 	case RAY:
 		return "ray"
 	case GLOW:
 		return "glow"
-	case ECLIPSE:
-		return "eclipse"
+	case ENLIGHTS:
+		return "enlights"
 	case EMIT:
 		return "emit"
 	case FLARE:

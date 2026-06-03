@@ -250,7 +250,7 @@ func TestRunSimpleGetX(t *testing.T) {
 
 func TestRunFlareUncaught(t *testing.T) {
 	src := `
-shine X {
+rise X {
 	public ray boom() { flare "boom"; }
 }
 var x X = new X();

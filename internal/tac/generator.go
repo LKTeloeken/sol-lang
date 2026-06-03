@@ -406,6 +406,8 @@ func (g *Generator) genExpr(e ast.Expr) string {
 		return ex.Name
 	case *ast.ThisExpr:
 		return "this"
+	case *ast.EnlightsExpr:
+		return "enlights"
 	case *ast.BinaryExpr:
 		t := g.freshTemp()
 		op := tokenOp(ex.Operator)

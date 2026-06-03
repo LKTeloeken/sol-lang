@@ -180,7 +180,7 @@ Remove `solc`, `output.tac`, `output.ll` e `program`.
 
 Consulte **[`SYNTAX.md`](SYNTAX.md)** — referência completa com:
 
-- Palavras reservadas (`shine`, `glow`, `ray`, `eclipse`, `emit`, `flare`, …)
+- Palavras reservadas (`rise`, `glow`, `ray`, `enlights`, `emit`, `flare`, …)
 - Tipos, operadores e controle de fluxo
 - Classes, herança e exceções
 - Arrays, `for each` e `for i in 0..10`
@@ -191,7 +191,7 @@ Consulte **[`SYNTAX.md`](SYNTAX.md)** — referência completa com:
 Exemplo mínimo (detalhes em `SYNTAX.md`):
 
 ```sol
-shine Foo {
+rise Foo {
     private int x;
 
     glow(int x) {

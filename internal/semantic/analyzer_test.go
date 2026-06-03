@@ -8,7 +8,7 @@ import (
 )
 
 func TestCheckValidProgram(t *testing.T) {
-	src := `shine Foo { private int x; glow(int x) { this.x = x; } public ray getX() { emit this.x; } }
+	src := `rise Foo { private int x; glow(int x) { this.x = x; } public ray getX() { emit this.x; } }
 var f Foo = new Foo(1);`
 	p := parser.New(lexer.New(src), "test.sol")
 	prog := p.Parse()

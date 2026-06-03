@@ -10,7 +10,7 @@ import (
 )
 
 func TestGenerateTAC(t *testing.T) {
-	src := `shine Foo {
+	src := `rise Foo {
     private int x;
     glow(int x) { this.x = x; }
     public ray getX() { emit this.x; }
@@ -34,7 +34,7 @@ var f Foo = new Foo(10);`
 }
 
 func TestGenerateCallTAC(t *testing.T) {
-	src := `shine Foo {
+	src := `rise Foo {
     public ray bar() { }
 }
 var f Foo = new Foo();

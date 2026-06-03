@@ -312,11 +312,11 @@ type ThisExpr struct {
 
 func (t *ThisExpr) exprNode() {}
 
-type EclipseExpr struct {
+type EnlightsExpr struct {
 	BaseExpr
 }
 
-func (e *EclipseExpr) exprNode() {}
+func (e *EnlightsExpr) exprNode() {}
 
 type BinaryExpr struct {
 	BaseExpr
@@ -381,7 +381,7 @@ type ParenExpr struct {
 
 func (p *ParenExpr) exprNode() {}
 
-// SuperCallExpr represents eclipse.glow(...) or eclipse.method(...)
+// SuperCallExpr represents enlights.glow(...) or enlights.method(...)
 type SuperCallExpr struct {
 	BaseExpr
 	Method string

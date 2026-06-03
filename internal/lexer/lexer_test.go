@@ -7,12 +7,12 @@ import (
 )
 
 func TestNextToken_Basic(t *testing.T) {
-	input := `shine Foo { private int x; }`
+	input := `rise Foo { private int x; }`
 	tests := []struct {
 		typ    token.Type
 		lexeme string
 	}{
-		{token.SHINE, "shine"},
+		{token.RISE, "rise"},
 		{token.IDENT, "Foo"},
 		{token.LBRACE, "{"},
 		{token.PRIVATE, "private"},

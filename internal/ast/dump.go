@@ -20,7 +20,7 @@ func dumpNode(b *strings.Builder, node Node, indent int) {
 	case *ClassDecl:
 		b.WriteString(pad + "ClassDecl " + n.Name)
 		if n.SuperName != "" {
-			b.WriteString(" eclipse " + n.SuperName)
+			b.WriteString(" enlights " + n.SuperName)
 		}
 		b.WriteString("\n")
 		for _, m := range n.Members {

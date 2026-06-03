@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseClass(t *testing.T) {
-	src := `shine Foo { private int x; glow(int x) { this.x = x; } }`
+	src := `rise Foo { private int x; glow(int x) { this.x = x; } }`
 	p := New(lexer.New(src), "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
@@ -31,7 +31,7 @@ func TestParseTopLevel(t *testing.T) {
 }
 
 func TestParseInheritance(t *testing.T) {
-	src := `shine Child eclipse Parent { private int x; }`
+	src := `rise Child enlights Parent { private int x; }`
 	p := New(lexer.New(src), "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {

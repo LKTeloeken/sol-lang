@@ -1,3 +1,3 @@
-shine Child eclipse Parent {
+rise Child enlights Parent {
     private int x;
 }

@@ -4,7 +4,7 @@ import "testing"
 
 func TestLookupIdentKeywords(t *testing.T) {
 	tests := map[string]Type{
-		"shine": SHINE, "ray": RAY, "glow": GLOW, "eclipse": ECLIPSE,
+		"rise": RISE, "ray": RAY, "glow": GLOW, "enlights": ENLIGHTS,
 		"emit": EMIT, "flare": FLARE, "int": INT_TYPE, "float": FLOAT_TYPE,
 		"bool": BOOL_TYPE, "string": STRING_TYPE, "void": VOID_TYPE,
 		"foobar": IDENT,
@@ -17,8 +17,8 @@ func TestLookupIdentKeywords(t *testing.T) {
 }
 
 func TestTypeString(t *testing.T) {
-	if SHINE.String() != "shine" {
-		t.Errorf("SHINE.String() = %q", SHINE.String())
+	if RISE.String() != "rise" {
+		t.Errorf("RISE.String() = %q", RISE.String())
 	}
 	if ASSIGN.String() != "=" {
 		t.Errorf("ASSIGN.String() = %q", ASSIGN.String())

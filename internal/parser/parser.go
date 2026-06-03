@@ -29,7 +29,7 @@ func (p *Parser) Errors() []diag.Error { return p.errors }
 func (p *Parser) Parse() *ast.Program {
 	prog := &ast.Program{}
 	for p.cur.Type != token.EOF {
-		if p.cur.Type == token.SHINE {
+		if p.cur.Type == token.RISE {
 			prog.Decls = append(prog.Decls, p.parseClassDecl())
 		} else {
 			prog.Decls = append(prog.Decls, p.parseTopLevelStmt())
@@ -64,13 +64,13 @@ func (p *Parser) expect(typ token.Type) bool {
 
 func (p *Parser) parseClassDecl() *ast.ClassDecl {
 	pos := p.pos()
-	p.expect(token.SHINE)
+	p.expect(token.RISE)
 	name := p.cur.Lexeme
 	if !p.expect(token.IDENT) {
 		return &ast.ClassDecl{PosInfo: pos, Name: name}
 	}
 	super := ""
-	if p.cur.Type == token.ECLIPSE {
+	if p.cur.Type == token.ENLIGHTS {
 		p.advance()
 		super = p.cur.Lexeme
 		p.expect(token.IDENT)
@@ -541,7 +541,7 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.THIS:
 		p.advance()
 		return &ast.ThisExpr{BaseExpr: ast.NewBase(pos)}
-	case token.ECLIPSE:
+	case token.ENLIGHTS:
 		p.advance()
 		if p.cur.Type == token.DOT {
 			p.advance()
@@ -552,10 +552,10 @@ func (p *Parser) parsePrimary() ast.Expr {
 				p.expect(token.RPAREN)
 				return &ast.SuperCallExpr{BaseExpr: ast.NewBase(pos), Method: method, Args: args}
 			}
-			return &ast.GetFieldExpr{BaseExpr: ast.NewBase(pos), Object: &ast.EclipseExpr{BaseExpr: ast.NewBase(pos)}, Field: method}
+			return &ast.GetFieldExpr{BaseExpr: ast.NewBase(pos), Object: &ast.EnlightsExpr{BaseExpr: ast.NewBase(pos)}, Field: method}
 		}
-		p.errorf("unexpected eclipse without .")
-		return &ast.EclipseExpr{BaseExpr: ast.NewBase(pos)}
+		p.errorf("unexpected enlights without .")
+		return &ast.EnlightsExpr{BaseExpr: ast.NewBase(pos)}
 	case token.IDENT:
 		name := p.cur.Lexeme
 		p.advance()

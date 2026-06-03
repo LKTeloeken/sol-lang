@@ -1,4 +1,4 @@
-shine A {
+rise A {
     public ray foo(int x) {
         emit x;
     }

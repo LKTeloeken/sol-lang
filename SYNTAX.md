@@ -46,10 +46,10 @@ SOL foi pensada como oposto conceitual ao **Lua** (*Lua* = lua, *Sol* = sol): me
 
 | Keyword | Uso | Equivalente familiar |
 |---------|-----|----------------------|
-| `shine` | Declarar classe | `class` |
+| `rise` | Declarar classe | `class` |
 | `glow` | Construtor | `constructor` |
 | `ray` | Declarar método | método |
-| `eclipse` | Herança ou chamada ao pai | `extends` / `super` |
+| `enlights` | Herança ou chamada ao pai | `extends` / `super` |
 | `emit` | Retornar valor de um método | `return` |
 | `flare` | Lançar exceção | `throw` |
 
@@ -122,10 +122,10 @@ null        // ausência de valor
 
 ## Classes e OOP
 
-### Declarar classe (`shine`)
+### Declarar classe (`rise`)
 
 ```sol
-shine NomeDaClasse {
+rise NomeDaClasse {
 
     private float saldo;
     public string titular;
@@ -155,23 +155,23 @@ shine NomeDaClasse {
 | Acesso ao objeto atual | `this.campo` |
 | Chamada de método | `obj.metodo(arg1, arg2)` |
 
-### Herança (`eclipse`)
+### Herança (`enlights`)
 
 ```sol
-shine Filha eclipse Pai {
+rise Filha enlights Pai {
 
     glow(string nome) {
-        eclipse.glow(nome, 0.0);   // chama construtor do pai
+        enlights.glow(nome, 0.0);   // chama construtor do pai
     }
 
     public ray sacar(float valor) {
-        eclipse.sacar(valor);      // chama método do pai
+        enlights.sacar(valor);      // chama método do pai
     }
 }
 ```
 
-- Na declaração da classe: `shine Filha eclipse Pai` — herda de `Pai`.
-- No corpo do método: `eclipse.metodo(...)` — equivalente ao `super` do Java.
+- Na declaração da classe: `rise Filha enlights Pai` — herda de `Pai`.
+- No corpo do método: `enlights.metodo(...)` — equivalente ao `super` do Java.
 
 ---
 
@@ -400,7 +400,7 @@ Se `flare` não for capturado, a VM aborta a execução com erro.
 Um programa `.sol` é uma sequência de declarações de classe e statements no nível raiz:
 
 ```sol
-shine MinhaClasse {
+rise MinhaClasse {
     // ...
 }
 
@@ -502,7 +502,7 @@ Exemplos prontos:
 ### Conta bancária
 
 ```sol
-shine ContaBancaria {
+rise ContaBancaria {
 
     private float saldo;
     private string titular;
@@ -540,12 +540,12 @@ conta.sacar(100.00);
 ### Herança
 
 ```sol
-shine ContaEspecial eclipse ContaBancaria {
+rise ContaEspecial enlights ContaBancaria {
 
     private float limiteCredito;
 
     glow(string titular, float saldoInicial, float limiteCredito) {
-        eclipse.glow(titular, saldoInicial);
+        enlights.glow(titular, saldoInicial);
         this.limiteCredito = limiteCredito;
     }
 
@@ -554,7 +554,7 @@ shine ContaEspecial eclipse ContaBancaria {
         if (valor > disponivel) {
             flare "Total limit exceeded";
         }
-        eclipse.sacar(valor);
+        enlights.sacar(valor);
     }
 }
 ```
