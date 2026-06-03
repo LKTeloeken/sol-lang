@@ -64,7 +64,7 @@ Every core structural keyword in SOL is a **solar metaphor**. This is both a des
 
 ### General-Purpose Keywords (English, non-themed)
 
-`public`, `private`, `var`, `new`, `this`, `if`, `else`, `while`, `for`, `each`, `in`, `try`, `catch`, `true`, `false`, `null`
+`public`, `private`, `var`, `new`, `this`, `if`, `else`, `while`, `for`, `each`, `in`, `break`, `continue`, `try`, `catch`, `true`, `false`, `null`
 
 ---
 
@@ -161,6 +161,11 @@ while (i < 10) {
     i = i + 1;
 }
 
+// for range — iterates over integer interval (semi-open)
+for i in 0..10 {
+    Console.print(i);  // prints 0..9
+}
+
 // for each — iterates over a list
 var contas [ContaBancaria] = [conta, especial];
 for each c in contas {
@@ -201,7 +206,7 @@ Program         = { TopLevelDecl } ;
 TopLevelDecl    = ClassDecl | TopLevelStmt ;
 
 TopLevelStmt    = VarDecl | AssignStmt | IfStmt | WhileStmt
-                | ForEachStmt | TryCatchStmt | ExprStmt ;
+                | ForEachStmt | ForRangeStmt | TryCatchStmt | ExprStmt ;
 
 ClassDecl       = "shine" Identifier [ "eclipse" Identifier ] "{" ClassBody "}" ;
 
@@ -238,6 +243,9 @@ Statement       = VarDecl
                 | IfStmt
                 | WhileStmt
                 | ForEachStmt
+                | ForRangeStmt
+                | BreakStmt
+                | ContinueStmt
                 | ReturnStmt
                 | FlareStmt
                 | TryCatchStmt
@@ -256,6 +264,12 @@ IfStmt          = "if" "(" Expression ")" Block [ "else" Block ] ;
 WhileStmt       = "while" "(" Expression ")" Block ;
 
 ForEachStmt     = "for" "each" Identifier "in" Expression Block ;
+
+ForRangeStmt    = "for" Identifier "in" Expression ".." Expression Block ;
+
+BreakStmt       = "break" ";" ;
+
+ContinueStmt    = "continue" ";" ;
 
 ReturnStmt      = "emit" [ Expression ] ";" ;
 
@@ -367,12 +381,12 @@ shine, ray, glow, eclipse, emit, flare
 
 // General reserved words
 public, private, var, new, this,
-if, else, while, for, each, in,
+if, else, while, for, each, in, break, continue,
 try, catch, true, false, null,
 int, float, bool, string, void
 
 // Operators
-+  -  *  /  %  !
++  -  *  /  %  !  ..
 == != <  >  <= >=
 && ||  =
 

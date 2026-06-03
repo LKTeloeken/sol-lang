@@ -49,6 +49,12 @@ func dumpNode(b *strings.Builder, node Node, indent int) {
 		b.WriteString(pad + "While\n")
 	case *ForEachStmt:
 		b.WriteString(pad + "ForEach " + n.VarName + "\n")
+	case *ForRangeStmt:
+		b.WriteString(pad + "ForRange " + n.VarName + "\n")
+	case *BreakStmt:
+		b.WriteString(pad + "Break\n")
+	case *ContinueStmt:
+		b.WriteString(pad + "Continue\n")
 	case *EmitStmt:
 		b.WriteString(pad + "Emit\n")
 	case *FlareStmt:

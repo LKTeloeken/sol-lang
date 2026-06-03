@@ -180,6 +180,32 @@ func (f *ForEachStmt) Pos() Pos { return f.PosInfo }
 func (f *ForEachStmt) stmtNode() {}
 func (f *ForEachStmt) topLevelDecl() {}
 
+type ForRangeStmt struct {
+	PosInfo Pos
+	VarName string
+	Start   Expr
+	End     Expr
+	Body    *BlockStmt
+}
+
+func (f *ForRangeStmt) Pos() Pos { return f.PosInfo }
+func (f *ForRangeStmt) stmtNode() {}
+func (f *ForRangeStmt) topLevelDecl() {}
+
+type BreakStmt struct {
+	PosInfo Pos
+}
+
+func (b *BreakStmt) Pos() Pos { return b.PosInfo }
+func (b *BreakStmt) stmtNode() {}
+
+type ContinueStmt struct {
+	PosInfo Pos
+}
+
+func (c *ContinueStmt) Pos() Pos { return c.PosInfo }
+func (c *ContinueStmt) stmtNode() {}
+
 type EmitStmt struct {
 	PosInfo Pos
 	Value   Expr

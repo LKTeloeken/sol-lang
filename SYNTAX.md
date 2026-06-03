@@ -59,6 +59,7 @@ SOL foi pensada como oposto conceitual ao **Lua** (*Lua* = lua, *Sol* = sol): me
 public   private   var   new   this
 if       else      while
 for      each      in
+break    continue
 try      catch
 true     false     null
 int      float     bool   string   void
@@ -256,6 +257,32 @@ while (i < 10) {
 }
 ```
 
+Loop infinito (estilo Go):
+
+```sol
+while (true) {
+    // corpo
+}
+```
+
+### `for i in 0..10` (range inteiro)
+
+```sol
+for i in 0..10 {
+    Console.print(i);
+}
+```
+
+Itera com `i` de `0` até `9` (intervalo semi-aberto: inclui o início, exclui o fim). Os limites podem ser expressões `int`:
+
+```sol
+var start int = 2;
+var end int = 5;
+for i in start..end {
+    Console.print(i);
+}
+```
+
 ### `for each` (arrays)
 
 ```sol
@@ -270,6 +297,22 @@ for each x in nums {
 
 A expressão após `in` deve ser um array (`[Tipo]`). Arrays suportam indexação `arr[i]` (índice `int`) e a propriedade `.length`.
 
+### `break` e `continue`
+
+```sol
+for i in 0..100 {
+    if (i == 50) {
+        break;
+    }
+    if (i % 2 == 0) {
+        continue;
+    }
+    Console.print(i);
+}
+```
+
+Só podem ser usados dentro de loops (`while`, `for each`, `for i in ..`).
+
 ---
 
 ## Stdlib: `Console`
@@ -283,6 +326,33 @@ Console.print("n=" + 42);
 ```
 
 `Console.print` aceita um ou mais argumentos dos tipos `string`, `int`, `float` ou `bool`. Vários argumentos são separados por espaço na saída.
+
+### Entrada do usuário
+
+```sol
+var nome string = Console.readLine();
+var idade string = Console.readLine("Digite sua idade: ");
+var n int = Console.readInt();
+```
+
+- `readLine()` — lê uma linha de texto do stdin (sem prompt).
+- `readLine(prompt string)` — imprime o prompt e lê a linha.
+- `readInt()` — lê uma linha e converte para `int` (erro em runtime se inválido).
+
+---
+
+## Stdlib: `File`
+
+A classe **`File`** fornece leitura e escrita de arquivos inteiros como `string`:
+
+```sol
+var conteudo string = File.read("dados.txt");
+File.write("saida.txt", conteudo);
+File.write("log.txt", "linha\n");
+```
+
+- `File.read(path string) string` — lê o arquivo completo; erro em runtime se o arquivo não existir.
+- `File.write(path string, content string) void` — sobrescreve o arquivo com o conteúdo.
 
 ---
 
@@ -368,6 +438,7 @@ Exemplos incluídos no repositório:
 ./solc --run examples/conta_bancaria.sol
 ./solc --run examples/heranca.sol
 ./solc --run examples/for_each.sol
+./solc --run examples/for_range.sol
 ./solc --run examples/simple.sol
 ```
 
@@ -411,6 +482,10 @@ Exemplos prontos:
 | Execução via VM (`--run`) | Implementado |
 | OOP, herança, `flare`, `try/catch` | Implementado |
 | `Console.print` (stdlib) | Implementado |
+| `Console.readLine`, `Console.readInt` | Implementado |
+| `File.read`, `File.write` | Implementado |
+| `for i in 0..10` (range) | Implementado |
+| `break`, `continue` | Implementado |
 | Concatenação de strings (`+`) | Implementado |
 | Arrays, `for each`, `arr[i]`, `.length` | Implementado |
 | Backend nativo (`--build`) | Experimental (hello world + subset) |
@@ -507,4 +582,4 @@ try {
 
 ---
 
-_Versão do guia: 1.1 — VM interpretada (`solc --run`) com `Console.print`, arrays completos e backend nativo experimental._
+_Versão do guia: 1.2 — VM interpretada com `Console`/`File` I/O, `for i in 0..10`, `break`/`continue`._

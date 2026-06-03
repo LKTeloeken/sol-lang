@@ -183,7 +183,9 @@ Consulte **[`SYNTAX.md`](SYNTAX.md)** — referência completa com:
 - Palavras reservadas (`shine`, `glow`, `ray`, `eclipse`, `emit`, `flare`, …)
 - Tipos, operadores e controle de fluxo
 - Classes, herança e exceções
-- Arrays e `for each`
+- Arrays, `for each` e `for i in 0..10`
+- Stdlib: `Console.print`, `Console.readLine`, `Console.readInt`, `File.read`, `File.write`
+- `break` e `continue`
 - Exemplos completos e limitações atuais
 
 Exemplo mínimo (detalhes em `SYNTAX.md`):

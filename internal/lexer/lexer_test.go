@@ -46,6 +46,18 @@ func TestNextToken_Operators(t *testing.T) {
 	}
 }
 
+func TestNextToken_RangeOperator(t *testing.T) {
+	input := `0..10 3.14 .field`
+	l := New(input)
+	want := []token.Type{token.INT, token.DOTDOT, token.INT, token.FLOAT, token.DOT, token.IDENT, token.EOF}
+	for i, wt := range want {
+		tok := l.NextToken()
+		if tok.Type != wt {
+			t.Fatalf("tests[%d] expected %q got %q", i, wt, tok.Type)
+		}
+	}
+}
+
 func TestNextToken_Comments(t *testing.T) {
 	input := `// comment
 var x int = 1; /* block */ var y int = 2;`

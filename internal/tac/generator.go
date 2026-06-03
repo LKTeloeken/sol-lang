@@ -26,10 +26,20 @@ const (
 	OpBeginTry Op = "beginTry"
 	OpEndTry   Op = "endTry"
 	OpPrint    Op = "print"
+	OpReadLine Op = "readLine"
+	OpReadInt  Op = "readInt"
+	OpFileRead Op = "fileRead"
+	OpFileWrite Op = "fileWrite"
 	OpArrayLit Op = "arrayLit"
 )
 
 const BuiltinConsole = "Console"
+const BuiltinFile = "File"
+
+type loopContext struct {
+	breakLabel    string
+	continueLabel string
+}
 
 type Instr struct {
 	Op       Op
@@ -77,6 +87,20 @@ func (i Instr) String() string {
 		return fmt.Sprintf("endTry %s", i.Label)
 	case OpPrint:
 		return fmt.Sprintf("print %s", i.Arg2)
+	case OpReadLine:
+		if i.Result != "" {
+			return fmt.Sprintf("%s = readLine %s", i.Result, i.Arg2)
+		}
+		return fmt.Sprintf("readLine %s", i.Arg2)
+	case OpReadInt:
+		if i.Result != "" {
+			return fmt.Sprintf("%s = readInt", i.Result)
+		}
+		return "readInt"
+	case OpFileRead:
+		return fmt.Sprintf("%s = fileRead %s", i.Result, i.Arg1)
+	case OpFileWrite:
+		return fmt.Sprintf("fileWrite %s", i.Arg1)
 	case OpArrayLit:
 		return fmt.Sprintf("%s = arrayLit %s", i.Result, i.Arg2)
 	default:
@@ -85,11 +109,12 @@ func (i Instr) String() string {
 }
 
 type Generator struct {
-	instrs   []Instr
-	temp     int
-	label    int
-	classes  map[string]*semantic.ClassInfo
-	curClass string
+	instrs    []Instr
+	temp      int
+	label     int
+	classes   map[string]*semantic.ClassInfo
+	curClass  string
+	loopStack []loopContext
 }
 
 func New(classes map[string]*semantic.ClassInfo) *Generator {
@@ -169,6 +194,8 @@ func (g *Generator) genTopLevel(d ast.TopLevelDecl) {
 		g.genWhile(s)
 	case *ast.ForEachStmt:
 		g.genForEach(s)
+	case *ast.ForRangeStmt:
+		g.genForRange(s)
 	case *ast.FlareStmt:
 		g.genFlare(s)
 	case *ast.TryCatchStmt:
@@ -190,6 +217,8 @@ func (g *Generator) genStmt(s ast.Stmt) {
 		g.genWhile(st)
 	case *ast.ForEachStmt:
 		g.genForEach(st)
+	case *ast.ForRangeStmt:
+		g.genForRange(st)
 	case *ast.EmitStmt:
 		if st.Value != nil {
 			v := g.genExpr(st.Value)
@@ -203,6 +232,10 @@ func (g *Generator) genStmt(s ast.Stmt) {
 		g.genTryCatch(st)
 	case *ast.ExprStmt:
 		g.genExpr(st.Expr)
+	case *ast.BreakStmt:
+		g.genBreak()
+	case *ast.ContinueStmt:
+		g.genContinue()
 	case *ast.BlockStmt:
 		for _, inner := range st.Stmts {
 			g.genStmt(inner)
@@ -246,9 +279,32 @@ func (g *Generator) genIf(s *ast.IfStmt) {
 	}
 }
 
+func (g *Generator) pushLoop(breakLabel, continueLabel string) {
+	g.loopStack = append(g.loopStack, loopContext{breakLabel: breakLabel, continueLabel: continueLabel})
+}
+
+func (g *Generator) popLoop() {
+	g.loopStack = g.loopStack[:len(g.loopStack)-1]
+}
+
+func (g *Generator) genBreak() {
+	if len(g.loopStack) == 0 {
+		return
+	}
+	g.emit(Instr{Op: OpGoto, Label: g.loopStack[len(g.loopStack)-1].breakLabel})
+}
+
+func (g *Generator) genContinue() {
+	if len(g.loopStack) == 0 {
+		return
+	}
+	g.emit(Instr{Op: OpGoto, Label: g.loopStack[len(g.loopStack)-1].continueLabel})
+}
+
 func (g *Generator) genWhile(s *ast.WhileStmt) {
 	start := g.freshLabel()
 	end := g.freshLabel()
+	g.pushLoop(end, start)
 	g.emit(Instr{Op: OpLabel, Label: start})
 	cond := g.genExpr(s.Cond)
 	g.emit(Instr{Op: OpIfFalse, Arg1: cond, Label: end})
@@ -257,6 +313,7 @@ func (g *Generator) genWhile(s *ast.WhileStmt) {
 	}
 	g.emit(Instr{Op: OpGoto, Label: start})
 	g.emit(Instr{Op: OpLabel, Label: end})
+	g.popLoop()
 }
 
 func (g *Generator) genForEach(s *ast.ForEachStmt) {
@@ -266,6 +323,8 @@ func (g *Generator) genForEach(s *ast.ForEachStmt) {
 	g.emit(Instr{Op: OpAssign, Result: idx, Arg1: "0", Comment: "for each index"})
 	loopStart := g.freshLabel()
 	loopEnd := g.freshLabel()
+	contLabel := g.freshLabel()
+	g.pushLoop(loopEnd, contLabel)
 	g.emit(Instr{Op: OpLabel, Label: loopStart})
 	g.emit(Instr{Op: OpAssign, Result: lenTmp, Arg1: arr + ".length", Comment: "array length"})
 	lt := g.freshTemp()
@@ -275,11 +334,37 @@ func (g *Generator) genForEach(s *ast.ForEachStmt) {
 	for _, st := range s.Body.Stmts {
 		g.genStmt(st)
 	}
+	g.emit(Instr{Op: OpLabel, Label: contLabel})
 	inc := g.freshTemp()
 	g.emit(Instr{Op: OpBinOp, Result: inc, Arg1: idx, Operator: "+", Arg2: "1"})
 	g.emit(Instr{Op: OpAssign, Result: idx, Arg1: inc})
 	g.emit(Instr{Op: OpGoto, Label: loopStart})
 	g.emit(Instr{Op: OpLabel, Label: loopEnd, Comment: "end for each " + arr})
+	g.popLoop()
+}
+
+func (g *Generator) genForRange(s *ast.ForRangeStmt) {
+	startVal := g.genExpr(s.Start)
+	endVal := g.genExpr(s.End)
+	g.emit(Instr{Op: OpAssign, Result: s.VarName, Arg1: startVal, Comment: "for range init"})
+	loopStart := g.freshLabel()
+	loopEnd := g.freshLabel()
+	contLabel := g.freshLabel()
+	g.pushLoop(loopEnd, contLabel)
+	g.emit(Instr{Op: OpLabel, Label: loopStart})
+	lt := g.freshTemp()
+	g.emit(Instr{Op: OpBinOp, Result: lt, Arg1: s.VarName, Operator: "<", Arg2: endVal})
+	g.emit(Instr{Op: OpIfFalse, Arg1: lt, Label: loopEnd})
+	for _, st := range s.Body.Stmts {
+		g.genStmt(st)
+	}
+	g.emit(Instr{Op: OpLabel, Label: contLabel})
+	inc := g.freshTemp()
+	g.emit(Instr{Op: OpBinOp, Result: inc, Arg1: s.VarName, Operator: "+", Arg2: "1"})
+	g.emit(Instr{Op: OpAssign, Result: s.VarName, Arg1: inc})
+	g.emit(Instr{Op: OpGoto, Label: loopStart})
+	g.emit(Instr{Op: OpLabel, Label: loopEnd, Comment: "end for range"})
+	g.popLoop()
 }
 
 func (g *Generator) genFlare(s *ast.FlareStmt) {
@@ -382,12 +467,42 @@ func (g *Generator) genExpr(e ast.Expr) string {
 
 func (g *Generator) genCall(c *ast.CallExpr) string {
 	if gf, ok := c.Callee.(*ast.GetFieldExpr); ok {
-		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinConsole && gf.Field == "print" {
-			for _, arg := range c.Args {
-				g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinConsole {
+			switch gf.Field {
+			case "print":
+				for _, arg := range c.Args {
+					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+				}
+				g.emit(Instr{Op: OpPrint, Arg2: fmt.Sprintf("%d", len(c.Args))})
+				return ""
+			case "readLine":
+				for _, arg := range c.Args {
+					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+				}
+				t := g.freshTemp()
+				g.emit(Instr{Op: OpReadLine, Result: t, Arg2: fmt.Sprintf("%d", len(c.Args))})
+				return t
+			case "readInt":
+				t := g.freshTemp()
+				g.emit(Instr{Op: OpReadInt, Result: t})
+				return t
 			}
-			g.emit(Instr{Op: OpPrint, Arg2: fmt.Sprintf("%d", len(c.Args))})
-			return ""
+		}
+		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinFile {
+			switch gf.Field {
+			case "read":
+				path := g.genExpr(c.Args[0])
+				t := g.freshTemp()
+				g.emit(Instr{Op: OpFileRead, Result: t, Arg1: path})
+				return t
+			case "write":
+				path := g.genExpr(c.Args[0])
+				content := g.genExpr(c.Args[1])
+				g.emit(Instr{Op: OpParam, Arg1: path})
+				g.emit(Instr{Op: OpParam, Arg1: content})
+				g.emit(Instr{Op: OpFileWrite, Arg2: "2"})
+				return ""
+			}
 		}
 		receiver := g.genExpr(gf.Object)
 		g.emit(Instr{Op: OpParam, Arg1: receiver})

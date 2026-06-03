@@ -38,6 +38,8 @@ const (
 	FOR
 	EACH
 	IN
+	BREAK
+	CONTINUE
 	TRY
 	CATCH
 	TRUE
@@ -75,6 +77,7 @@ const (
 	LBRACK
 	RBRACK
 	DOT
+	DOTDOT
 	COMMA
 	SEMICOLON
 )
@@ -97,6 +100,8 @@ var keywords = map[string]Type{
 	"for":     FOR,
 	"each":    EACH,
 	"in":      IN,
+	"break":   BREAK,
+	"continue": CONTINUE,
 	"try":     TRY,
 	"catch":   CATCH,
 	"true":    TRUE,
@@ -168,6 +173,10 @@ func (t Type) String() string {
 		return "each"
 	case IN:
 		return "in"
+	case BREAK:
+		return "break"
+	case CONTINUE:
+		return "continue"
 	case TRY:
 		return "try"
 	case CATCH:
@@ -230,6 +239,8 @@ func (t Type) String() string {
 		return "]"
 	case DOT:
 		return "."
+	case DOTDOT:
+		return ".."
 	case COMMA:
 		return ","
 	case SEMICOLON:

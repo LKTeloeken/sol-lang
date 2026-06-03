@@ -91,6 +91,11 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			return token.Token{Type: token.COMMA, Lexeme: ",", Line: line, Column: col}
 		case '.':
+			if l.peekChar() == '.' {
+				l.readChar()
+				l.readChar()
+				return token.Token{Type: token.DOTDOT, Lexeme: "..", Line: line, Column: col}
+			}
 			l.readChar()
 			return token.Token{Type: token.DOT, Lexeme: ".", Line: line, Column: col}
 		case '(':

@@ -1,7 +1,10 @@
 package vm
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -31,6 +34,7 @@ type VM struct {
 	callResult Value
 	catchStack []catchHandler
 	inCatch    bool
+	stdin      io.Reader
 }
 
 // New creates a VM for the given instructions and class metadata.
@@ -47,6 +51,18 @@ func New(instrs []tac.Instr, classes map[string]*semantic.ClassInfo) *VM {
 		}
 	}
 	return vm
+}
+
+// SetStdin configures the input reader for Console.readLine/readInt (defaults to os.Stdin).
+func (vm *VM) SetStdin(r io.Reader) {
+	vm.stdin = r
+}
+
+func (vm *VM) reader() io.Reader {
+	if vm.stdin != nil {
+		return vm.stdin
+	}
+	return os.Stdin
 }
 
 // Run executes from __program until __end.
@@ -117,6 +133,39 @@ func (vm *VM) Run() error {
 		case tac.OpPrint:
 			n, _ := strconv.Atoi(ins.Arg2)
 			if err := vm.doPrint(n); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpReadLine:
+			val, err := vm.doReadLine(ins)
+			if err != nil {
+				return err
+			}
+			if err := vm.store(ins.Result, val); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpReadInt:
+			val, err := vm.doReadInt()
+			if err != nil {
+				return err
+			}
+			if err := vm.store(ins.Result, val); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpFileRead:
+			val, err := vm.doFileRead(ins.Arg1)
+			if err != nil {
+				return err
+			}
+			if err := vm.store(ins.Result, val); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpFileWrite:
+			n, _ := strconv.Atoi(ins.Arg2)
+			if err := vm.doFileWrite(n); err != nil {
 				return err
 			}
 			vm.pc++
@@ -215,6 +264,71 @@ func (vm *VM) doArrayLit(result string, n int) error {
 
 func formatPrintable(v Value) string {
 	return v.String()
+}
+
+func (vm *VM) doReadLine(ins tac.Instr) (Value, error) {
+	n, _ := strconv.Atoi(ins.Arg2)
+	if n > len(vm.params) {
+		return Str(""), fmt.Errorf("readLine: expected %d params, got %d", n, len(vm.params))
+	}
+	if n > 0 {
+		prompt := vm.params[len(vm.params)-n]
+		vm.params = vm.params[:len(vm.params)-n]
+		fmt.Print(prompt.String())
+	}
+	line, err := bufio.NewReader(vm.reader()).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return Str(""), fmt.Errorf("readLine: %w", err)
+	}
+	line = strings.TrimSuffix(line, "\n")
+	return Str(line), nil
+}
+
+func (vm *VM) doReadInt() (Value, error) {
+	line, err := vm.doReadLine(tac.Instr{Arg2: "0"})
+	if err != nil {
+		return Int(0), err
+	}
+	i, err := strconv.ParseInt(strings.TrimSpace(line.StrVal), 10, 64)
+	if err != nil {
+		return Int(0), fmt.Errorf("readInt: invalid integer %q", line.StrVal)
+	}
+	return Int(i), nil
+}
+
+func (vm *VM) doFileRead(pathRef string) (Value, error) {
+	pathVal, err := vm.resolveValue(pathRef)
+	if err != nil {
+		return Str(""), err
+	}
+	if pathVal.Kind != KindString {
+		return Str(""), fmt.Errorf("fileRead: path must be string")
+	}
+	data, err := os.ReadFile(pathVal.StrVal)
+	if err != nil {
+		return Str(""), fmt.Errorf("fileRead: %w", err)
+	}
+	return Str(string(data)), nil
+}
+
+func (vm *VM) doFileWrite(n int) error {
+	if n > len(vm.params) {
+		return fmt.Errorf("fileWrite: expected %d params, got %d", n, len(vm.params))
+	}
+	args := vm.params[len(vm.params)-n:]
+	vm.params = vm.params[:len(vm.params)-n]
+	if len(args) != 2 {
+		return fmt.Errorf("fileWrite: expected 2 params")
+	}
+	path := args[0].StrVal
+	content := args[1].StrVal
+	if args[0].Kind != KindString || args[1].Kind != KindString {
+		return fmt.Errorf("fileWrite: path and content must be strings")
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return fmt.Errorf("fileWrite: %w", err)
+	}
+	return nil
 }
 
 // Global returns a top-level variable value.
@@ -392,6 +506,9 @@ func (vm *VM) resolveValue(name string) (Value, error) {
 	name = strings.TrimSpace(name)
 	if name == "call_result" {
 		return vm.callResult, nil
+	}
+	if strings.HasPrefix(name, `"`) {
+		return parseLiteral(name)
 	}
 	if idx := strings.Index(name, "["); idx > 0 && strings.HasSuffix(name, "]") {
 		base := name[:idx]

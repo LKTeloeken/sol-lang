@@ -68,6 +68,7 @@ type Analyzer struct {
 	scopes  []*Scope
 	errors  []diag.Error
 	inRay   bool
+	loopDepth int
 	curClass *ClassInfo
 }
 
@@ -81,6 +82,7 @@ func New(file string) *Analyzer {
 func (a *Analyzer) Errors() []diag.Error { return a.errors }
 
 const BuiltinConsole = "Console"
+const BuiltinFile = "File"
 
 func (a *Analyzer) Check(prog *ast.Program) {
 	a.registerBuiltins()
@@ -106,6 +108,31 @@ func (a *Analyzer) registerBuiltins() {
 				Visibility: "public",
 				ReturnType: &ast.TypeDesc{Base: "void"},
 			},
+			"readLine": {
+				Name:       "readLine",
+				Visibility: "public",
+				ReturnType: &ast.TypeDesc{Base: "string"},
+			},
+			"readInt": {
+				Name:       "readInt",
+				Visibility: "public",
+				ReturnType: &ast.TypeDesc{Base: "int"},
+			},
+		},
+	}
+	a.classes[BuiltinFile] = &ClassInfo{
+		Name: BuiltinFile,
+		Methods: map[string]*MethodInfo{
+			"read": {
+				Name:       "read",
+				Visibility: "public",
+				ReturnType: &ast.TypeDesc{Base: "string"},
+			},
+			"write": {
+				Name:       "write",
+				Visibility: "public",
+				ReturnType: &ast.TypeDesc{Base: "void"},
+			},
 		},
 	}
 }
@@ -115,6 +142,10 @@ func (a *Analyzer) collectClasses(prog *ast.Program) {
 		if c, ok := decl.(*ast.ClassDecl); ok {
 			if c.Name == BuiltinConsole {
 				a.err(c.Pos(), "class name %q is reserved for stdlib", BuiltinConsole)
+				continue
+			}
+			if c.Name == BuiltinFile {
+				a.err(c.Pos(), "class name %q is reserved for stdlib", BuiltinFile)
 				continue
 			}
 			if _, exists := a.classes[c.Name]; exists {
@@ -217,6 +248,8 @@ func (a *Analyzer) checkTopLevelStmt(d ast.TopLevelDecl) {
 		a.checkWhile(s)
 	case *ast.ForEachStmt:
 		a.checkForEach(s)
+	case *ast.ForRangeStmt:
+		a.checkForRange(s)
 	case *ast.FlareStmt:
 		a.err(s.Pos(), "flare at top level")
 	case *ast.TryCatchStmt:
@@ -246,6 +279,8 @@ func (a *Analyzer) checkStmt(s ast.Stmt) {
 		a.checkWhile(st)
 	case *ast.ForEachStmt:
 		a.checkForEach(st)
+	case *ast.ForRangeStmt:
+		a.checkForRange(st)
 	case *ast.EmitStmt:
 		if st.Value != nil {
 			a.checkExpr(st.Value)
@@ -259,6 +294,10 @@ func (a *Analyzer) checkStmt(s ast.Stmt) {
 		a.checkTryCatch(st)
 	case *ast.ExprStmt:
 		a.checkExpr(st.Expr)
+	case *ast.BreakStmt:
+		a.checkBreak(st)
+	case *ast.ContinueStmt:
+		a.checkContinue(st)
 	case *ast.BlockStmt:
 		a.checkBlock(st)
 	}
@@ -296,8 +335,13 @@ func (a *Analyzer) checkIf(s *ast.IfStmt) {
 }
 
 func (a *Analyzer) checkWhile(s *ast.WhileStmt) {
-	a.checkExpr(s.Cond)
+	ct := a.checkExpr(s.Cond)
+	if ct != nil && ct.Base != "bool" && ct.Base != "" {
+		a.err(s.Pos(), "while condition must be bool")
+	}
+	a.loopDepth++
 	a.checkBlock(s.Body)
+	a.loopDepth--
 }
 
 func (a *Analyzer) checkForEach(s *ast.ForEachStmt) {
@@ -311,8 +355,39 @@ func (a *Analyzer) checkForEach(s *ast.ForEachStmt) {
 		elemType = &ast.TypeDesc{Base: "void"}
 	}
 	a.scopes[len(a.scopes)-1].Define(&Symbol{Name: s.VarName, Kind: SymVar, Type: elemType, Pos: s.Pos()})
+	a.loopDepth++
 	a.checkBlock(s.Body)
+	a.loopDepth--
 	a.popScope()
+}
+
+func (a *Analyzer) checkForRange(s *ast.ForRangeStmt) {
+	st := a.checkExpr(s.Start)
+	et := a.checkExpr(s.End)
+	if st != nil && st.Base != "int" {
+		a.err(s.Start.Pos(), "for range start must be int")
+	}
+	if et != nil && et.Base != "int" {
+		a.err(s.End.Pos(), "for range end must be int")
+	}
+	a.pushScope()
+	a.scopes[len(a.scopes)-1].Define(&Symbol{Name: s.VarName, Kind: SymVar, Type: &ast.TypeDesc{Base: "int"}, Pos: s.Pos()})
+	a.loopDepth++
+	a.checkBlock(s.Body)
+	a.loopDepth--
+	a.popScope()
+}
+
+func (a *Analyzer) checkBreak(s *ast.BreakStmt) {
+	if a.loopDepth == 0 {
+		a.err(s.Pos(), "break outside loop")
+	}
+}
+
+func (a *Analyzer) checkContinue(s *ast.ContinueStmt) {
+	if a.loopDepth == 0 {
+		a.err(s.Pos(), "continue outside loop")
+	}
 }
 
 func (a *Analyzer) checkTryCatch(s *ast.TryCatchStmt) {
@@ -434,6 +509,9 @@ func (a *Analyzer) checkCall(c *ast.CallExpr) *ast.TypeDesc {
 		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinConsole {
 			return a.checkConsoleCall(c, gf)
 		}
+		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinFile {
+			return a.checkFileCall(c, gf)
+		}
 		objType := a.checkExpr(gf.Object)
 		for _, arg := range c.Args {
 			a.checkExpr(arg)
@@ -470,20 +548,70 @@ func (a *Analyzer) checkCall(c *ast.CallExpr) *ast.TypeDesc {
 }
 
 func (a *Analyzer) checkConsoleCall(c *ast.CallExpr, gf *ast.GetFieldExpr) *ast.TypeDesc {
-	if gf.Field != "print" {
+	switch gf.Field {
+	case "print":
+		if len(c.Args) < 1 {
+			a.err(c.Pos(), "Console.print requires at least one argument")
+		}
+		for _, arg := range c.Args {
+			t := a.checkExpr(arg)
+			if t != nil && !isPrintableType(t) {
+				a.err(arg.Pos(), "Console.print argument must be int, float, bool, or string")
+			}
+		}
+		return &ast.TypeDesc{Base: "void"}
+	case "readLine":
+		if len(c.Args) > 1 {
+			a.err(c.Pos(), "Console.readLine accepts at most one argument")
+		}
+		if len(c.Args) == 1 {
+			t := a.checkExpr(c.Args[0])
+			if t != nil && t.Base != "string" {
+				a.err(c.Args[0].Pos(), "Console.readLine prompt must be string")
+			}
+		}
+		return &ast.TypeDesc{Base: "string"}
+	case "readInt":
+		if len(c.Args) != 0 {
+			a.err(c.Pos(), "Console.readInt accepts no arguments")
+		}
+		return &ast.TypeDesc{Base: "int"}
+	default:
 		a.err(c.Pos(), "unknown static method Console.%s", gf.Field)
 		return &ast.TypeDesc{Base: "void"}
 	}
-	if len(c.Args) < 1 {
-		a.err(c.Pos(), "Console.print requires at least one argument")
-	}
-	for _, arg := range c.Args {
-		t := a.checkExpr(arg)
-		if t != nil && !isPrintableType(t) {
-			a.err(arg.Pos(), "Console.print argument must be int, float, bool, or string")
+}
+
+func (a *Analyzer) checkFileCall(c *ast.CallExpr, gf *ast.GetFieldExpr) *ast.TypeDesc {
+	switch gf.Field {
+	case "read":
+		if len(c.Args) != 1 {
+			a.err(c.Pos(), "File.read requires one argument")
+		} else {
+			t := a.checkExpr(c.Args[0])
+			if t != nil && t.Base != "string" {
+				a.err(c.Args[0].Pos(), "File.read path must be string")
+			}
 		}
+		return &ast.TypeDesc{Base: "string"}
+	case "write":
+		if len(c.Args) != 2 {
+			a.err(c.Pos(), "File.write requires two arguments")
+		} else {
+			pt := a.checkExpr(c.Args[0])
+			if pt != nil && pt.Base != "string" {
+				a.err(c.Args[0].Pos(), "File.write path must be string")
+			}
+			ct := a.checkExpr(c.Args[1])
+			if ct != nil && ct.Base != "string" {
+				a.err(c.Args[1].Pos(), "File.write content must be string")
+			}
+		}
+		return &ast.TypeDesc{Base: "void"}
+	default:
+		a.err(c.Pos(), "unknown static method File.%s", gf.Field)
+		return &ast.TypeDesc{Base: "void"}
 	}
-	return &ast.TypeDesc{Base: "void"}
 }
 
 func isPrintableType(t *ast.TypeDesc) bool {
@@ -514,6 +642,15 @@ func (a *Analyzer) checkField(g *ast.GetFieldExpr) *ast.TypeDesc {
 			}
 		}
 		a.err(g.Pos(), "unknown member Console.%s", g.Field)
+		return &ast.TypeDesc{Base: "void"}
+	}
+	if id, ok := g.Object.(*ast.IdentExpr); ok && id.Name == BuiltinFile {
+		if gf, ok := a.classes[BuiltinFile]; ok {
+			if mi, ok := gf.Methods[g.Field]; ok {
+				return mi.ReturnType
+			}
+		}
+		a.err(g.Pos(), "unknown member File.%s", g.Field)
 		return &ast.TypeDesc{Base: "void"}
 	}
 	ci := a.findClass(objType.Base)

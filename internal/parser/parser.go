@@ -210,7 +210,15 @@ func (p *Parser) parseStatement() ast.Stmt {
 	case token.WHILE:
 		return p.parseWhileStmt()
 	case token.FOR:
-		return p.parseForEachStmt()
+		p.advance()
+		if p.cur.Type == token.EACH {
+			return p.parseForEachStmt()
+		}
+		return p.parseForRangeStmt()
+	case token.BREAK:
+		return p.parseBreakStmt()
+	case token.CONTINUE:
+		return p.parseContinueStmt()
 	case token.EMIT:
 		return p.parseEmitStmt()
 	case token.FLARE:
@@ -279,7 +287,6 @@ func (p *Parser) parseWhileStmt() *ast.WhileStmt {
 
 func (p *Parser) parseForEachStmt() *ast.ForEachStmt {
 	pos := p.pos()
-	p.expect(token.FOR)
 	p.expect(token.EACH)
 	name := p.cur.Lexeme
 	p.expect(token.IDENT)
@@ -287,6 +294,32 @@ func (p *Parser) parseForEachStmt() *ast.ForEachStmt {
 	iter := p.parseExpression()
 	body := p.parseBlock()
 	return &ast.ForEachStmt{PosInfo: pos, VarName: name, Iter: iter, Body: body}
+}
+
+func (p *Parser) parseForRangeStmt() *ast.ForRangeStmt {
+	pos := p.pos()
+	name := p.cur.Lexeme
+	p.expect(token.IDENT)
+	p.expect(token.IN)
+	start := p.parseExpression()
+	p.expect(token.DOTDOT)
+	end := p.parseExpression()
+	body := p.parseBlock()
+	return &ast.ForRangeStmt{PosInfo: pos, VarName: name, Start: start, End: end, Body: body}
+}
+
+func (p *Parser) parseBreakStmt() *ast.BreakStmt {
+	pos := p.pos()
+	p.expect(token.BREAK)
+	p.expect(token.SEMICOLON)
+	return &ast.BreakStmt{PosInfo: pos}
+}
+
+func (p *Parser) parseContinueStmt() *ast.ContinueStmt {
+	pos := p.pos()
+	p.expect(token.CONTINUE)
+	p.expect(token.SEMICOLON)
+	return &ast.ContinueStmt{PosInfo: pos}
 }
 
 func (p *Parser) parseEmitStmt() *ast.EmitStmt {
