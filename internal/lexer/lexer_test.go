@@ -79,6 +79,29 @@ var x int = 1; /* block */ var y int = 2;`
 	t.Fatal("expected second var declaration")
 }
 
+func TestNextToken_OrbitImport(t *testing.T) {
+	input := `orbit "utils.sol";`
+	l := New(input)
+	want := []struct {
+		typ    token.Type
+		lexeme string
+	}{
+		{token.ORBIT, "orbit"},
+		{token.STRING, "utils.sol"},
+		{token.SEMICOLON, ";"},
+		{token.EOF, ""},
+	}
+	for i, tt := range want {
+		tok := l.NextToken()
+		if tok.Type != tt.typ {
+			t.Fatalf("tests[%d] type: want %q got %q", i, tt.typ, tok.Type)
+		}
+		if tt.lexeme != "" && tok.Lexeme != tt.lexeme {
+			t.Fatalf("tests[%d] lexeme: want %q got %q", i, tt.lexeme, tok.Lexeme)
+		}
+	}
+}
+
 func TestNextToken_StringAndNumbers(t *testing.T) {
 	input := `"hello" 42 3.14 true null`
 	l := New(input)

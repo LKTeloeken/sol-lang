@@ -8,6 +8,7 @@ import (
 	"github.com/unisc/compiladores/sol/internal/ast"
 	"github.com/unisc/compiladores/sol/internal/diag"
 	"github.com/unisc/compiladores/sol/internal/lexer"
+	"github.com/unisc/compiladores/sol/internal/modules"
 	"github.com/unisc/compiladores/sol/internal/parser"
 	"github.com/unisc/compiladores/sol/internal/semantic"
 	"github.com/unisc/compiladores/sol/internal/tac"
@@ -27,6 +28,11 @@ const (
 	PhaseBuild
 )
 
+// RunOptions configures VM execution.
+type RunOptions struct {
+	ScriptArgs []string
+}
+
 type Result struct {
 	Tokens   []token.Token
 	Program  *ast.Program
@@ -39,14 +45,22 @@ type Result struct {
 }
 
 func CompileFile(file string, phase Phase) (*Result, error) {
+	return CompileFileWithOptions(file, phase, RunOptions{})
+}
+
+func CompileFileWithOptions(file string, phase Phase, opts RunOptions) (*Result, error) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	return Compile(string(src), file, phase)
+	return CompileWithOptions(string(src), file, phase, opts)
 }
 
 func Compile(src, file string, phase Phase) (*Result, error) {
+	return CompileWithOptions(src, file, phase, RunOptions{})
+}
+
+func CompileWithOptions(src, file string, phase Phase, opts RunOptions) (*Result, error) {
 	res := &Result{}
 	l := lexer.New(src)
 	if phase == PhaseLex {
@@ -58,6 +72,15 @@ func Compile(src, file string, phase Phase) (*Result, error) {
 	res.Errors = append(res.Errors, p.Errors()...)
 	res.Program = prog
 	if phase == PhaseParse {
+		return res, nil
+	}
+	if phase >= PhaseCheck {
+		var expandErrs []diag.Error
+		prog, expandErrs = modules.Expand(prog, file)
+		res.Errors = append(res.Errors, expandErrs...)
+		res.Program = prog
+	}
+	if len(res.Errors) > 0 && phase == PhaseCheck {
 		return res, nil
 	}
 	sem := semantic.New(file)
@@ -77,6 +100,7 @@ func Compile(src, file string, phase Phase) (*Result, error) {
 	}
 	if phase == PhaseRun {
 		machine := vm.New(gen.Instructions(), sem.Classes())
+		machine.SetScriptArgs(opts.ScriptArgs)
 		res.VM = machine
 		res.RunErr = machine.Run()
 		return res, nil

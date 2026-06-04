@@ -4,8 +4,8 @@ import "testing"
 
 func TestLookupIdentKeywords(t *testing.T) {
 	tests := map[string]Type{
-		"rise": RISE, "ray": RAY, "glow": GLOW, "enlights": ENLIGHTS,
-		"emit": EMIT, "flare": FLARE, "int": INT_TYPE, "float": FLOAT_TYPE,
+		"rise": RISE, "ray": RAY, "glow": GLOW, "radiate": RADIATE,
+		"emit": EMIT, "flare": FLARE, "orbit": ORBIT, "int": INT_TYPE, "float": FLOAT_TYPE,
 		"bool": BOOL_TYPE, "string": STRING_TYPE, "void": VOID_TYPE,
 		"foobar": IDENT,
 	}

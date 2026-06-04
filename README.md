@@ -180,11 +180,11 @@ Remove `solc`, `output.tac`, `output.ll` e `program`.
 
 Consulte **[`SYNTAX.md`](SYNTAX.md)** — referência completa com:
 
-- Palavras reservadas (`rise`, `glow`, `ray`, `enlights`, `emit`, `flare`, …)
+- Palavras reservadas (`rise`, `glow`, `ray`, `radiate`, `emit`, `flare`, …)
 - Tipos, operadores e controle de fluxo
 - Classes, herança e exceções
 - Arrays, `for each` e `for i in 0..10`
-- Stdlib: `Console.print`, `Console.readLine`, `Console.readInt`, `File.read`, `File.write`
+- Stdlib: `Console`, `File` (+ append/exists), `Time`, `String`, `Math`, `Args` (CLI após o `.sol`)
 - `break` e `continue`
 - Exemplos completos e limitações atuais
 

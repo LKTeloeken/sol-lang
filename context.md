@@ -58,7 +58,7 @@ Every core structural keyword in SOL is a **solar metaphor**. This is both a des
 | `rise`    | Declare a class              | A class rises — structure emerges at dawn     |
 | `glow`    | Constructor of a class       | The initial glow when an object comes to life |
 | `ray`     | Declare a method             | A ray of light emitted from the class         |
-| `enlights` | Inheritance / call super   | A derived class enlightened by its parent     |
+| `radiate` | Inheritance / call super   | A derived class radiates behavior from its parent |
 | `emit`    | Return a value from a method | Emitting/radiating a result outward           |
 | `flare`   | Throw an exception           | A solar flare — an unexpected burst of energy |
 
@@ -107,17 +107,17 @@ rise ContaBancaria {
 }
 ```
 
-### 4.2 Inheritance (`enlights`)
+### 4.2 Inheritance (`radiate`)
 
-The keyword `enlights` is used both to **declare inheritance** and to **call the parent class** (equivalent to `super` in Java).
+The keyword `radiate` is used both to **declare inheritance** and to **call the parent class** (equivalent to `super` in Java).
 
 ```sol
-rise ContaEspecial enlights ContaBancaria {
+rise ContaEspecial radiate ContaBancaria {
 
     private float limiteCredito;
 
     glow(string titular, float saldoInicial, float limiteCredito) {
-        enlights.glow(titular, saldoInicial);   // calls parent constructor
+        radiate.glow(titular, saldoInicial);   // calls parent constructor
         this.limiteCredito = limiteCredito;
     }
 
@@ -126,7 +126,7 @@ rise ContaEspecial enlights ContaBancaria {
         if (valor > disponivel) {
             flare "Total limit exceeded";
         }
-        enlights.sacar(valor);                  // calls parent method
+        radiate.sacar(valor);                  // calls parent method
     }
 
     public ray getLimite() {
@@ -203,12 +203,14 @@ The grammar uses the following EBNF notation:
 ```ebnf
 Program         = { TopLevelDecl } ;
 
-TopLevelDecl    = ClassDecl | TopLevelStmt ;
+TopLevelDecl    = ClassDecl | TopLevelStmt | ImportDecl ;
+
+ImportDecl      = "orbit" StringLiteral ";" ;
 
 TopLevelStmt    = VarDecl | AssignStmt | IfStmt | WhileStmt
                 | ForEachStmt | ForRangeStmt | TryCatchStmt | ExprStmt ;
 
-ClassDecl       = "rise" Identifier [ "enlights" Identifier ] "{" ClassBody "}" ;
+ClassDecl       = "rise" Identifier [ "radiate" Identifier ] "{" ClassBody "}" ;
 
 ClassBody       = { MemberDecl } ;
 
@@ -257,7 +259,7 @@ AssignStmt      = LValue "=" Expression ";" ;
 
 LValue          = Identifier
                 | "this" "." Identifier
-                | "enlights" "." Identifier ;
+                | "radiate" "." Identifier ;
 
 IfStmt          = "if" "(" Expression ")" Block [ "else" Block ] ;
 
@@ -308,7 +310,7 @@ Primary         = IntLiteral
                 | BoolLiteral
                 | NullLiteral
                 | "this"
-                | "enlights" "." "glow" "(" [ ArgList ] ")"
+                | "radiate" "." "glow" "(" [ ArgList ] ")"
                 | Identifier [ "(" [ ArgList ] ")" ]
                 | "new" Identifier "(" [ ArgList ] ")"
                 | "[" [ ExprList ] "]"
@@ -377,7 +379,7 @@ INT_LIT, FLOAT_LIT, STRING_LIT, BOOL_LIT, NULL_LIT
 IDENT
 
 // Sun-themed reserved words
-rise, ray, glow, enlights, emit, flare
+rise, ray, glow, radiate, emit, flare
 
 // General reserved words
 public, private, var, new, this,
@@ -520,7 +522,7 @@ type Token struct {
 - Implementation strategy: **Recursive Descent Parser** — one function per grammar rule.
 - Each grammar production maps directly to a Go function: `parseProgram()`, `parseClassDecl()`, `parseMethodDecl()`, `parseStatement()`, `parseExpression()`, etc.
 - Expression parsing uses **Pratt parsing** (top-down operator precedence) to handle the precedence hierarchy correctly.
-- The `enlights` keyword serves double duty: as inheritance marker in class declarations, and as super-call prefix inside method bodies — the parser must handle both contexts.
+- The `radiate` keyword serves double duty: as inheritance marker in class declarations, and as super-call prefix inside method bodies — the parser must handle both contexts.
 - Errors should be descriptive ("expected '{' after class name at line 5, column 12") and, when possible, the parser should attempt error recovery to report multiple errors in one pass.
 
 **AST node examples:**
@@ -529,7 +531,7 @@ type Token struct {
 // ShineDecl represents a class declaration
 type ShineDecl struct {
     Name       string
-    SuperClass string   // empty string if no enlights
+    SuperClass string   // empty string if no radiate
     Fields     []FieldDecl
     Constructor *GlowDecl
     Methods    []RayDecl
@@ -562,7 +564,7 @@ type RayDecl struct {
 1. No variable used before declaration
 2. No variable declared twice in the same scope
 3. All method calls reference methods that exist on the target class
-4. `enlights` in a class body refers to an actually declared class
+4. `radiate` in a class body refers to an actually declared class
 5. `emit` expression type matches the expected return type of the enclosing `ray`
 6. `flare` is used inside a method body (not at top level)
 7. `new ClassName()` — `ClassName` must be a declared `rise`
@@ -677,7 +679,7 @@ The grammar is LL(1)-friendly (with minimal lookahead needed). Recursive descent
 Three-Address Code is the standard intermediate representation taught in compilers courses. It is human-readable, easy to verify manually, and close enough to assembly to demonstrate code generation concepts without requiring a full machine code backend.
 
 **Why single inheritance only?**
-Multiple inheritance introduces diamond-problem complexity that is out of scope for a compiler course project. The `enlights` keyword enforces exactly one parent class, keeping the class hierarchy simple and the semantic analysis tractable.
+Multiple inheritance introduces diamond-problem complexity that is out of scope for a compiler course project. The `radiate` keyword enforces exactly one parent class, keeping the class hierarchy simple and the semantic analysis tractable.
 
 **Why static typing?**
 A statically-typed language allows type errors to be caught at compile time (in the semantic phase) rather than at runtime, which is a better pedagogical choice for demonstrating semantic analysis. It also makes the type checker significantly simpler to implement correctly.

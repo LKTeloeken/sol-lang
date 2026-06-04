@@ -123,6 +123,149 @@ func TestConsoleReadInt(t *testing.T) {
 	}
 }
 
+func TestTimeNow(t *testing.T) {
+	src := `var t int = Time.now();
+if (t <= 0) {
+    Console.print("bad time");
+}`
+	res, err := Compile(src, "test.sol", PhaseRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+	tv, ok := res.VM.Global("t")
+	if !ok || tv.Int <= 0 {
+		t.Fatalf("expected positive unix time, got %v", tv)
+	}
+}
+
+func TestArgsCLI(t *testing.T) {
+	src := `
+var n int = Args.count();
+var a string = Args.at(0);
+var b string = Args.at(1);
+`
+	res, err := CompileWithOptions(src, "test.sol", PhaseRun, RunOptions{ScriptArgs: []string{"hello", "world"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+	n, _ := res.VM.Global("n")
+	if n.Int != 2 {
+		t.Fatalf("expected 2 args, got %d", n.Int)
+	}
+	a, _ := res.VM.Global("a")
+	if a.StrVal != "hello" {
+		t.Fatalf("expected hello, got %q", a.StrVal)
+	}
+	b, _ := res.VM.Global("b")
+	if b.StrVal != "world" {
+		t.Fatalf("expected world, got %q", b.StrVal)
+	}
+}
+
+func TestStringMath(t *testing.T) {
+	src := `
+var len int = String.length("abc");
+var trimmed string = String.trim("  x  ");
+var parts [string] = String.split("a,b", ",");
+var has bool = String.contains("hello", "ell");
+var sub string = String.substring("hello", 1, 4);
+var r float = Math.random();
+var m float = Math.max(1.0, 2.0);
+var f int = Math.floor(3.7);
+`
+	res, err := Compile(src, "test.sol", PhaseRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+	len, _ := res.VM.Global("len")
+	if len.Int != 3 {
+		t.Fatalf("length: %d", len.Int)
+	}
+	trimmed, _ := res.VM.Global("trimmed")
+	if trimmed.StrVal != "x" {
+		t.Fatalf("trim: %q", trimmed.StrVal)
+	}
+	has, _ := res.VM.Global("has")
+	if !has.Bool {
+		t.Fatal("contains expected true")
+	}
+	sub, _ := res.VM.Global("sub")
+	if sub.StrVal != "ell" {
+		t.Fatalf("substring: %q", sub.StrVal)
+	}
+	f, _ := res.VM.Global("f")
+	if f.Int != 3 {
+		t.Fatalf("floor: %d", f.Int)
+	}
+	m, _ := res.VM.Global("m")
+	if m.Float != 2.0 {
+		t.Fatalf("max: %v", m.Float)
+	}
+}
+
+func TestFileAppendExists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "log.txt")
+	src := fmt.Sprintf(`
+File.write("%s", "a");
+File.append("%s", "b");
+var ok bool = File.exists("%s");
+var s string = File.read("%s");
+`, path, path, path, path)
+	res, err := Compile(src, "test.sol", PhaseRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+	ok, _ := res.VM.Global("ok")
+	if !ok.Bool {
+		t.Fatal("expected exists true")
+	}
+	s, _ := res.VM.Global("s")
+	if s.StrVal != "ab" {
+		t.Fatalf("expected ab, got %q", s.StrVal)
+	}
+}
+
+func TestEmitIRMainArgs(t *testing.T) {
+	res, err := Compile(`Console.print("x");`, "test.sol", PhaseEmitIR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.IR, "define i32 @main(i32 %argc, i8** %argv)") {
+		t.Fatal("expected main with argc/argv")
+	}
+	if !strings.Contains(res.IR, "sol_args_init") {
+		t.Fatal("expected sol_args_init call")
+	}
+	if !strings.Contains(res.IR, "sol_time_now") {
+		t.Fatal("expected sol_time_now declare")
+	}
+}
+
 func TestFileIO(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")

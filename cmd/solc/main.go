@@ -45,7 +45,11 @@ func main() {
 		*compile = true
 	}
 
-	res, err := compiler.CompileFile(file, phase)
+	scriptArgs := []string{}
+	if flag.NArg() > 1 {
+		scriptArgs = flag.Args()[1:]
+	}
+	res, err := compiler.CompileFileWithOptions(file, phase, compiler.RunOptions{ScriptArgs: scriptArgs})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "solc: %v\n", err)
 		os.Exit(1)

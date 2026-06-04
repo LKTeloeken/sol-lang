@@ -49,9 +49,10 @@ SOL foi pensada como oposto conceitual ao **Lua** (*Lua* = lua, *Sol* = sol): me
 | `rise` | Declarar classe | `class` |
 | `glow` | Construtor | `constructor` |
 | `ray` | Declarar método | método |
-| `enlights` | Herança ou chamada ao pai | `extends` / `super` |
+| `radiate` | Herança ou chamada ao pai | `extends` / `super` |
 | `emit` | Retornar valor de um método | `return` |
 | `flare` | Lançar exceção | `throw` |
+| `orbit` | Importar outro arquivo `.sol` | `import` / `#include` |
 
 ### Keywords gerais
 
@@ -155,23 +156,23 @@ rise NomeDaClasse {
 | Acesso ao objeto atual | `this.campo` |
 | Chamada de método | `obj.metodo(arg1, arg2)` |
 
-### Herança (`enlights`)
+### Herança (`radiate`)
 
 ```sol
-rise Filha enlights Pai {
+rise Filha radiate Pai {
 
     glow(string nome) {
-        enlights.glow(nome, 0.0);   // chama construtor do pai
+        radiate.glow(nome, 0.0);   // chama construtor do pai
     }
 
     public ray sacar(float valor) {
-        enlights.sacar(valor);      // chama método do pai
+        radiate.sacar(valor);      // chama método do pai
     }
 }
 ```
 
-- Na declaração da classe: `rise Filha enlights Pai` — herda de `Pai`.
-- No corpo do método: `enlights.metodo(...)` — equivalente ao `super` do Java.
+- Na declaração da classe: `rise Filha radiate Pai` — herda de `Pai`.
+- No corpo do método: `radiate.metodo(...)` — equivalente ao `super` do Java.
 
 ---
 
@@ -353,6 +354,85 @@ File.write("log.txt", "linha\n");
 
 - `File.read(path string) string` — lê o arquivo completo; erro em runtime se o arquivo não existir.
 - `File.write(path string, content string) void` — sobrescreve o arquivo com o conteúdo.
+- `File.append(path string, content string) void` — acrescenta ao final do arquivo (cria se não existir).
+- `File.exists(path string) bool` — `true` se o caminho existir.
+
+---
+
+## Stdlib: `Time`
+
+```sol
+var now int = Time.now();
+Time.sleepMillis(100);
+var s string = Time.format(now, "2006-01-02 15:04:05");
+```
+
+| Método | Assinatura | Descrição |
+|--------|------------|-----------|
+| `now` | `() int` | Unix timestamp (segundos) |
+| `sleepMillis` | `(ms int) void` | Pausa a execução |
+| `format` | `(unix int, layout string) string` | Formata data/hora (layouts como em Go; ver `time.Format`) |
+
+---
+
+## Stdlib: `String`
+
+```sol
+var n int = String.length("abc");
+var t string = String.trim("  hi  ");
+var parts [string] = String.split("a,b", ",");
+var ok bool = String.contains("abc", "b");
+var sub string = String.substring("hello", 1, 4);
+```
+
+| Método | Assinatura |
+|--------|------------|
+| `length` | `(s string) int` |
+| `trim` | `(s string) string` |
+| `split` | `(s string, sep string) [string]` |
+| `contains` | `(s string, sub string) bool` |
+| `substring` | `(s string, start int, end int) string` |
+
+`substring` falha em runtime se os índices forem inválidos.
+
+---
+
+## Stdlib: `Math`
+
+```sol
+var a float = Math.abs(-1.5);
+var lo float = Math.min(1.0, 2.0);
+var hi float = Math.max(1.0, 2.0);
+var n int = Math.floor(3.9);
+var r float = Math.random();
+```
+
+| Método | Assinatura |
+|--------|------------|
+| `abs` | `(x float) float` |
+| `min` / `max` | `(a float, b float) float` |
+| `floor` | `(x float) int` |
+| `random` | `() float` | valor em `[0, 1)` |
+
+---
+
+## Stdlib: `Args` (argumentos do script)
+
+Argumentos passados ao `solc` **depois** do arquivo `.sol`:
+
+```bash
+./solc --run script.sol arg1 arg2
+```
+
+```sol
+var n int = Args.count();
+var first string = Args.at(0);
+```
+
+| Método | Assinatura |
+|--------|------------|
+| `count` | `() int` |
+| `at` | `(i int) string` | erro (`flare`) se índice fora do intervalo |
 
 ---
 
@@ -410,6 +490,25 @@ obj.metodo();
 
 Não existe `main()`. O compilador gera um bloco `__program` que executa os statements top-level após carregar as classes.
 
+### Imports (`orbit`)
+
+Use `orbit` para incluir outro arquivo `.sol` no programa. O caminho é relativo ao diretório do arquivo que contém o `orbit`.
+
+```sol
+orbit "utils.sol";
+```
+
+- Mescla **classes e statements** top-level do arquivo importado na posição do `orbit`.
+- Imports aninhados são suportados (`utils.sol` pode importar outros arquivos).
+- Import circular é erro de compilação.
+- `--parse` mostra o nó `orbit` no AST; `--check`, `--compile` e `--run` expandem os imports antes da análise semântica.
+
+Exemplo em `examples/modules/`:
+
+```bash
+./solc --run examples/modules/main.sol
+```
+
 ---
 
 ## Como executar
@@ -440,6 +539,7 @@ Exemplos incluídos no repositório:
 ./solc --run examples/for_each.sol
 ./solc --run examples/for_range.sol
 ./solc --run examples/simple.sol
+./solc --run examples/modules/main.sol
 ```
 
 ---
@@ -483,11 +583,17 @@ Exemplos prontos:
 | OOP, herança, `flare`, `try/catch` | Implementado |
 | `Console.print` (stdlib) | Implementado |
 | `Console.readLine`, `Console.readInt` | Implementado |
-| `File.read`, `File.write` | Implementado |
+| `File.read`, `File.write`, `File.append`, `File.exists` | Implementado |
+| `Time.now`, `Time.sleepMillis`, `Time.format` | Implementado |
+| `String.length`, `trim`, `split`, `contains`, `substring` | Implementado (VM) |
+| `Math.abs`, `min`, `max`, `floor`, `random` | Implementado |
+| `Args.count`, `Args.at` | Implementado |
+| Stdlib no backend nativo (`--build`) | Subconjunto; `String.split` e leitura interativa só na VM |
 | `for i in 0..10` (range) | Implementado |
 | `break`, `continue` | Implementado |
 | Concatenação de strings (`+`) | Implementado |
 | Arrays, `for each`, `arr[i]`, `.length` | Implementado |
+| Imports `orbit "arquivo.sol"` | Implementado |
 | Backend nativo (`--build`) | Experimental (hello world + subset) |
 | Múltipla herança | Não suportado |
 | Modificadores além de public/private | Não suportado |
@@ -540,12 +646,12 @@ conta.sacar(100.00);
 ### Herança
 
 ```sol
-rise ContaEspecial enlights ContaBancaria {
+rise ContaEspecial radiate ContaBancaria {
 
     private float limiteCredito;
 
     glow(string titular, float saldoInicial, float limiteCredito) {
-        enlights.glow(titular, saldoInicial);
+        radiate.glow(titular, saldoInicial);
         this.limiteCredito = limiteCredito;
     }
 
@@ -554,7 +660,7 @@ rise ContaEspecial enlights ContaBancaria {
         if (valor > disponivel) {
             flare "Total limit exceeded";
         }
-        enlights.sacar(valor);
+        radiate.sacar(valor);
     }
 }
 ```
@@ -582,4 +688,4 @@ try {
 
 ---
 
-_Versão do guia: 1.2 — VM interpretada com `Console`/`File` I/O, `for i in 0..10`, `break`/`continue`._
+_Versão do guia: 1.3 — Stdlib onda 1: `Time`, `String`, `Math`, `Args`, `File.append`/`exists`._

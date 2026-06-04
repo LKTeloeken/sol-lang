@@ -22,9 +22,10 @@ const (
 	RISE
 	RAY
 	GLOW
-	ENLIGHTS
+	RADIATE
 	EMIT
 	FLARE
+	ORBIT
 
 	// General keywords
 	PUBLIC
@@ -86,9 +87,10 @@ var keywords = map[string]Type{
 	"rise":      RISE,
 	"ray":       RAY,
 	"glow":      GLOW,
-	"enlights":  ENLIGHTS,
+	"radiate":   RADIATE,
 	"emit":    EMIT,
 	"flare":   FLARE,
+	"orbit":   ORBIT,
 	"public":  PUBLIC,
 	"private": PRIVATE,
 	"var":     VAR,
@@ -145,12 +147,14 @@ func (t Type) String() string {
 		return "ray"
 	case GLOW:
 		return "glow"
-	case ENLIGHTS:
-		return "enlights"
+	case RADIATE:
+		return "radiate"
 	case EMIT:
 		return "emit"
 	case FLARE:
 		return "flare"
+	case ORBIT:
+		return "orbit"
 	case PUBLIC:
 		return "public"
 	case PRIVATE:

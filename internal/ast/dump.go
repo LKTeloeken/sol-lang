@@ -17,10 +17,12 @@ func dumpNode(b *strings.Builder, node Node, indent int) {
 		for _, d := range n.Decls {
 			dumpNode(b, d, indent+1)
 		}
+	case *ImportDecl:
+		b.WriteString(pad + "Orbit \"" + n.Path + "\"\n")
 	case *ClassDecl:
 		b.WriteString(pad + "ClassDecl " + n.Name)
 		if n.SuperName != "" {
-			b.WriteString(" enlights " + n.SuperName)
+			b.WriteString(" radiate " + n.SuperName)
 		}
 		b.WriteString("\n")
 		for _, m := range n.Members {

@@ -70,6 +70,15 @@ type ClassDecl struct {
 func (c *ClassDecl) Pos() Pos { return c.PosInfo }
 func (c *ClassDecl) topLevelDecl() {}
 
+// ImportDecl imports another .sol file via orbit "path".
+type ImportDecl struct {
+	PosInfo Pos
+	Path    string
+}
+
+func (i *ImportDecl) Pos() Pos       { return i.PosInfo }
+func (i *ImportDecl) topLevelDecl() {}
+
 type MemberDecl interface {
 	Node
 	memberDecl()
@@ -312,11 +321,11 @@ type ThisExpr struct {
 
 func (t *ThisExpr) exprNode() {}
 
-type EnlightsExpr struct {
+type RadiateExpr struct {
 	BaseExpr
 }
 
-func (e *EnlightsExpr) exprNode() {}
+func (e *RadiateExpr) exprNode() {}
 
 type BinaryExpr struct {
 	BaseExpr
@@ -381,7 +390,7 @@ type ParenExpr struct {
 
 func (p *ParenExpr) exprNode() {}
 
-// SuperCallExpr represents enlights.glow(...) or enlights.method(...)
+// SuperCallExpr represents radiate.glow(...) or radiate.method(...)
 type SuperCallExpr struct {
 	BaseExpr
 	Method string

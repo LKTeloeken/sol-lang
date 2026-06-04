@@ -1,12 +1,13 @@
 package vm
 
 import (
-	"bufio"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/unisc/compiladores/sol/internal/semantic"
 	"github.com/unisc/compiladores/sol/internal/tac"
@@ -33,12 +34,14 @@ type VM struct {
 	pc         int
 	callResult Value
 	catchStack []catchHandler
-	inCatch    bool
-	stdin      io.Reader
+	inCatch     bool
+	stdin       io.Reader
+	scriptArgs  []string
 }
 
 // New creates a VM for the given instructions and class metadata.
 func New(instrs []tac.Instr, classes map[string]*semantic.ClassInfo) *VM {
+	rand.Seed(time.Now().UnixNano())
 	vm := &VM{
 		instrs:  instrs,
 		labels:  make(map[string]int),
@@ -130,42 +133,8 @@ func (vm *VM) Run() error {
 			if err := vm.startCall(ins.Arg1, n); err != nil {
 				return err
 			}
-		case tac.OpPrint:
-			n, _ := strconv.Atoi(ins.Arg2)
-			if err := vm.doPrint(n); err != nil {
-				return err
-			}
-			vm.pc++
-		case tac.OpReadLine:
-			val, err := vm.doReadLine(ins)
-			if err != nil {
-				return err
-			}
-			if err := vm.store(ins.Result, val); err != nil {
-				return err
-			}
-			vm.pc++
-		case tac.OpReadInt:
-			val, err := vm.doReadInt()
-			if err != nil {
-				return err
-			}
-			if err := vm.store(ins.Result, val); err != nil {
-				return err
-			}
-			vm.pc++
-		case tac.OpFileRead:
-			val, err := vm.doFileRead(ins.Arg1)
-			if err != nil {
-				return err
-			}
-			if err := vm.store(ins.Result, val); err != nil {
-				return err
-			}
-			vm.pc++
-		case tac.OpFileWrite:
-			n, _ := strconv.Atoi(ins.Arg2)
-			if err := vm.doFileWrite(n); err != nil {
+		case tac.OpBuiltin:
+			if err := vm.doBuiltin(ins); err != nil {
 				return err
 			}
 			vm.pc++
@@ -266,26 +235,8 @@ func formatPrintable(v Value) string {
 	return v.String()
 }
 
-func (vm *VM) doReadLine(ins tac.Instr) (Value, error) {
-	n, _ := strconv.Atoi(ins.Arg2)
-	if n > len(vm.params) {
-		return Str(""), fmt.Errorf("readLine: expected %d params, got %d", n, len(vm.params))
-	}
-	if n > 0 {
-		prompt := vm.params[len(vm.params)-n]
-		vm.params = vm.params[:len(vm.params)-n]
-		fmt.Print(prompt.String())
-	}
-	line, err := bufio.NewReader(vm.reader()).ReadString('\n')
-	if err != nil && err != io.EOF {
-		return Str(""), fmt.Errorf("readLine: %w", err)
-	}
-	line = strings.TrimSuffix(line, "\n")
-	return Str(line), nil
-}
-
 func (vm *VM) doReadInt() (Value, error) {
-	line, err := vm.doReadLine(tac.Instr{Arg2: "0"})
+	line, err := vm.doReadLine(0)
 	if err != nil {
 		return Int(0), err
 	}
@@ -294,21 +245,6 @@ func (vm *VM) doReadInt() (Value, error) {
 		return Int(0), fmt.Errorf("readInt: invalid integer %q", line.StrVal)
 	}
 	return Int(i), nil
-}
-
-func (vm *VM) doFileRead(pathRef string) (Value, error) {
-	pathVal, err := vm.resolveValue(pathRef)
-	if err != nil {
-		return Str(""), err
-	}
-	if pathVal.Kind != KindString {
-		return Str(""), fmt.Errorf("fileRead: path must be string")
-	}
-	data, err := os.ReadFile(pathVal.StrVal)
-	if err != nil {
-		return Str(""), fmt.Errorf("fileRead: %w", err)
-	}
-	return Str(string(data)), nil
 }
 
 func (vm *VM) doFileWrite(n int) error {
@@ -385,7 +321,7 @@ func (vm *VM) startCall(label string, nArgs int) error {
 		}
 	}
 	if ci.Super != nil {
-		locals["enlights"] = vm.superView(this, ci.Super)
+		locals["radiate"] = vm.superView(this, ci.Super)
 	}
 
 	target, ok := vm.labels[label]
@@ -528,6 +464,9 @@ func (vm *VM) resolveValue(name string) (Value, error) {
 		return arr.Array[i], nil
 	}
 	if strings.Contains(name, ".") {
+		if v, err := parseLiteral(name); err == nil && (v.Kind == KindFloat || v.Kind == KindInt) {
+			return v, nil
+		}
 		return vm.resolveFieldPath(name)
 	}
 	if v, ok := vm.lookup(name); ok {
@@ -598,7 +537,7 @@ func (vm *VM) store(target string, val Value) error {
 			return fmt.Errorf("cannot assign field on non-object")
 		}
 		obj.Object.Fields[field] = val
-		if rootName == "this" || rootName == "enlights" {
+		if rootName == "this" || rootName == "radiate" {
 			if len(vm.frames) > 0 {
 				vm.frames[len(vm.frames)-1].locals[rootName] = obj
 			}

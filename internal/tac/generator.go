@@ -6,6 +6,7 @@ import (
 
 	"github.com/unisc/compiladores/sol/internal/ast"
 	"github.com/unisc/compiladores/sol/internal/semantic"
+	"github.com/unisc/compiladores/sol/internal/stdlib"
 	"github.com/unisc/compiladores/sol/internal/token"
 )
 
@@ -25,16 +26,9 @@ const (
 	OpComment  Op = "comment"
 	OpBeginTry Op = "beginTry"
 	OpEndTry   Op = "endTry"
-	OpPrint    Op = "print"
-	OpReadLine Op = "readLine"
-	OpReadInt  Op = "readInt"
-	OpFileRead Op = "fileRead"
-	OpFileWrite Op = "fileWrite"
+	OpBuiltin  Op = "builtin"
 	OpArrayLit Op = "arrayLit"
 )
-
-const BuiltinConsole = "Console"
-const BuiltinFile = "File"
 
 type loopContext struct {
 	breakLabel    string
@@ -85,22 +79,11 @@ func (i Instr) String() string {
 		return fmt.Sprintf("beginTry %s %s", i.Label, i.Arg1)
 	case OpEndTry:
 		return fmt.Sprintf("endTry %s", i.Label)
-	case OpPrint:
-		return fmt.Sprintf("print %s", i.Arg2)
-	case OpReadLine:
+	case OpBuiltin:
 		if i.Result != "" {
-			return fmt.Sprintf("%s = readLine %s", i.Result, i.Arg2)
+			return fmt.Sprintf("%s = builtin %s %s", i.Result, i.Arg1, i.Arg2)
 		}
-		return fmt.Sprintf("readLine %s", i.Arg2)
-	case OpReadInt:
-		if i.Result != "" {
-			return fmt.Sprintf("%s = readInt", i.Result)
-		}
-		return "readInt"
-	case OpFileRead:
-		return fmt.Sprintf("%s = fileRead %s", i.Result, i.Arg1)
-	case OpFileWrite:
-		return fmt.Sprintf("fileWrite %s", i.Arg1)
+		return fmt.Sprintf("builtin %s %s", i.Arg1, i.Arg2)
 	case OpArrayLit:
 		return fmt.Sprintf("%s = arrayLit %s", i.Result, i.Arg2)
 	default:
@@ -406,8 +389,8 @@ func (g *Generator) genExpr(e ast.Expr) string {
 		return ex.Name
 	case *ast.ThisExpr:
 		return "this"
-	case *ast.EnlightsExpr:
-		return "enlights"
+	case *ast.RadiateExpr:
+		return "radiate"
 	case *ast.BinaryExpr:
 		t := g.freshTemp()
 		op := tokenOp(ex.Operator)
@@ -469,41 +452,21 @@ func (g *Generator) genExpr(e ast.Expr) string {
 
 func (g *Generator) genCall(c *ast.CallExpr) string {
 	if gf, ok := c.Callee.(*ast.GetFieldExpr); ok {
-		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinConsole {
-			switch gf.Field {
-			case "print":
+		if id, ok := gf.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
+			if _, ok := stdlib.Lookup(id.Name, gf.Field); ok {
 				for _, arg := range c.Args {
 					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
 				}
-				g.emit(Instr{Op: OpPrint, Arg2: fmt.Sprintf("%d", len(c.Args))})
-				return ""
-			case "readLine":
-				for _, arg := range c.Args {
-					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+				idStr := stdlib.BuiltinID(id.Name, gf.Field)
+				ins := Instr{Op: OpBuiltin, Arg1: idStr, Arg2: fmt.Sprintf("%d", len(c.Args))}
+				if stdlib.ReturnsVoid(id.Name, gf.Field) {
+					g.emit(ins)
+					return ""
 				}
 				t := g.freshTemp()
-				g.emit(Instr{Op: OpReadLine, Result: t, Arg2: fmt.Sprintf("%d", len(c.Args))})
+				ins.Result = t
+				g.emit(ins)
 				return t
-			case "readInt":
-				t := g.freshTemp()
-				g.emit(Instr{Op: OpReadInt, Result: t})
-				return t
-			}
-		}
-		if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == BuiltinFile {
-			switch gf.Field {
-			case "read":
-				path := g.genExpr(c.Args[0])
-				t := g.freshTemp()
-				g.emit(Instr{Op: OpFileRead, Result: t, Arg1: path})
-				return t
-			case "write":
-				path := g.genExpr(c.Args[0])
-				content := g.genExpr(c.Args[1])
-				g.emit(Instr{Op: OpParam, Arg1: path})
-				g.emit(Instr{Op: OpParam, Arg1: content})
-				g.emit(Instr{Op: OpFileWrite, Arg2: "2"})
-				return ""
 			}
 		}
 		receiver := g.genExpr(gf.Object)

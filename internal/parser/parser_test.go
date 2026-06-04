@@ -3,6 +3,7 @@ package parser
 import (
 	"testing"
 
+	"github.com/unisc/compiladores/sol/internal/ast"
 	"github.com/unisc/compiladores/sol/internal/lexer"
 )
 
@@ -30,8 +31,36 @@ func TestParseTopLevel(t *testing.T) {
 	}
 }
 
+func TestParseOrbitImport(t *testing.T) {
+	src := `orbit "utils.sol";`
+	p := New(lexer.New(src), "test.sol")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	if len(prog.Decls) != 1 {
+		t.Fatalf("expected 1 decl, got %d", len(prog.Decls))
+	}
+	imp, ok := prog.Decls[0].(*ast.ImportDecl)
+	if !ok {
+		t.Fatalf("expected ImportDecl, got %T", prog.Decls[0])
+	}
+	if imp.Path != "utils.sol" {
+		t.Fatalf("path = %q, want utils.sol", imp.Path)
+	}
+}
+
+func TestParseOrbitImportMissingString(t *testing.T) {
+	src := `orbit foo;`
+	p := New(lexer.New(src), "test.sol")
+	_ = p.Parse()
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parse error for non-string after orbit")
+	}
+}
+
 func TestParseInheritance(t *testing.T) {
-	src := `rise Child enlights Parent { private int x; }`
+	src := `rise Child radiate Parent { private int x; }`
 	p := New(lexer.New(src), "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {

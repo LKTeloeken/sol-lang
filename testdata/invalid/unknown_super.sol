@@ -1,3 +1,3 @@
-rise Child enlights Parent {
+rise Child radiate Parent {
     private int x;
 }

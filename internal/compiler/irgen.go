@@ -6,10 +6,9 @@ import (
 
 	"github.com/unisc/compiladores/sol/internal/ast"
 	"github.com/unisc/compiladores/sol/internal/semantic"
+	"github.com/unisc/compiladores/sol/internal/stdlib"
 	"github.com/unisc/compiladores/sol/internal/token"
 )
-
-const builtinConsole = "Console"
 
 // IRGen generates LLVM IR text from an annotated AST.
 type IRGen struct {
@@ -40,8 +39,9 @@ func (g *IRGen) Generate(prog *ast.Program) string {
 	header.WriteString("declare i8* @sol_bool_to_str(i1)\n")
 	header.WriteString("declare %struct.SolObject* @sol_new(i8*)\n")
 	header.WriteString("declare void @sol_set_field(%struct.SolObject*, i8*, i8*)\n")
-	header.WriteString("declare i8* @sol_get_field(%struct.SolObject*, i8*)\n\n")
-	header.WriteString("%struct.SolObject = type { i8*, i8*, i64, [64 x i8*], [64 x i8*] }\n\n")
+	header.WriteString("declare i8* @sol_get_field(%struct.SolObject*, i8*)\n")
+	g.writeRuntimeDecls(&header)
+	header.WriteString("\n%struct.SolObject = type { i8*, i8*, i64, [64 x i8*], [64 x i8*] }\n\n")
 
 	for _, decl := range prog.Decls {
 		if c, ok := decl.(*ast.ClassDecl); ok {
@@ -51,8 +51,9 @@ func (g *IRGen) Generate(prog *ast.Program) string {
 
 	g.buf.Reset()
 
-	g.buf.WriteString("define i32 @main() {\n")
+	g.buf.WriteString("define i32 @main(i32 %argc, i8** %argv) {\n")
 	g.buf.WriteString("entry:\n")
+	g.buf.WriteString("  call void @sol_args_init(i32 %argc, i8** %argv)\n")
 	for _, decl := range prog.Decls {
 		if _, ok := decl.(*ast.ClassDecl); ok {
 			continue
@@ -242,9 +243,10 @@ func (g *IRGen) genExpr(e ast.Expr) string {
 		return t
 	case *ast.CallExpr:
 		if gf, ok := ex.Callee.(*ast.GetFieldExpr); ok {
-			if id, ok := gf.Object.(*ast.IdentExpr); ok && id.Name == builtinConsole && gf.Field == "print" {
-				g.genConsolePrint(ex.Args)
-				return g.freshTemp()
+			if id, ok := gf.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
+				if _, ok := stdlib.Lookup(id.Name, gf.Field); ok {
+					return g.genBuiltinCall(id.Name, gf.Field, ex.Args)
+				}
 			}
 			for _, arg := range ex.Args {
 				g.genExpr(arg)

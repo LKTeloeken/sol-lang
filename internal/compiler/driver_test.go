@@ -60,6 +60,56 @@ func TestCompileInvalid(t *testing.T) {
 	}
 }
 
+func TestCompileOrbitModules(t *testing.T) {
+	res, err := CompileFile("../../examples/modules/main.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+}
+
+func TestCompileOrbitMissing(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/orbit_missing.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected import errors")
+	}
+}
+
+func TestCompileOrbitCircular(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/orbit_cycle_a.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected circular import error")
+	}
+}
+
+func TestCheckReservedStdlibClass(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/reserved_class_time.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected reserved class name error")
+	}
+}
+
+func TestCheckBuiltinWrongArgs(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/builtin_wrong_args.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected builtin arity error")
+	}
+}
+
 func TestEmitIR(t *testing.T) {
 	res, err := CompileFile("../../examples/simple.sol", PhaseEmitIR)
 	if err != nil {

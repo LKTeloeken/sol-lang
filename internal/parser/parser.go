@@ -29,9 +29,12 @@ func (p *Parser) Errors() []diag.Error { return p.errors }
 func (p *Parser) Parse() *ast.Program {
 	prog := &ast.Program{}
 	for p.cur.Type != token.EOF {
-		if p.cur.Type == token.RISE {
+		switch p.cur.Type {
+		case token.RISE:
 			prog.Decls = append(prog.Decls, p.parseClassDecl())
-		} else {
+		case token.ORBIT:
+			prog.Decls = append(prog.Decls, p.parseImportDecl())
+		default:
 			prog.Decls = append(prog.Decls, p.parseTopLevelStmt())
 		}
 	}
@@ -70,7 +73,7 @@ func (p *Parser) parseClassDecl() *ast.ClassDecl {
 		return &ast.ClassDecl{PosInfo: pos, Name: name}
 	}
 	super := ""
-	if p.cur.Type == token.ENLIGHTS {
+	if p.cur.Type == token.RADIATE {
 		p.advance()
 		super = p.cur.Lexeme
 		p.expect(token.IDENT)
@@ -195,6 +198,20 @@ func (p *Parser) parseBlock() *ast.BlockStmt {
 	}
 	p.expect(token.RBRACE)
 	return &ast.BlockStmt{PosInfo: pos, Stmts: stmts}
+}
+
+func (p *Parser) parseImportDecl() *ast.ImportDecl {
+	pos := p.pos()
+	p.expect(token.ORBIT)
+	path := ""
+	if p.cur.Type != token.STRING {
+		p.errorf("expected string literal after orbit")
+	} else {
+		path = p.cur.Lexeme
+		p.advance()
+	}
+	p.expect(token.SEMICOLON)
+	return &ast.ImportDecl{PosInfo: pos, Path: path}
 }
 
 func (p *Parser) parseTopLevelStmt() ast.TopLevelDecl {
@@ -541,7 +558,7 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.THIS:
 		p.advance()
 		return &ast.ThisExpr{BaseExpr: ast.NewBase(pos)}
-	case token.ENLIGHTS:
+	case token.RADIATE:
 		p.advance()
 		if p.cur.Type == token.DOT {
 			p.advance()
@@ -552,10 +569,10 @@ func (p *Parser) parsePrimary() ast.Expr {
 				p.expect(token.RPAREN)
 				return &ast.SuperCallExpr{BaseExpr: ast.NewBase(pos), Method: method, Args: args}
 			}
-			return &ast.GetFieldExpr{BaseExpr: ast.NewBase(pos), Object: &ast.EnlightsExpr{BaseExpr: ast.NewBase(pos)}, Field: method}
+			return &ast.GetFieldExpr{BaseExpr: ast.NewBase(pos), Object: &ast.RadiateExpr{BaseExpr: ast.NewBase(pos)}, Field: method}
 		}
-		p.errorf("unexpected enlights without .")
-		return &ast.EnlightsExpr{BaseExpr: ast.NewBase(pos)}
+		p.errorf("unexpected radiate without .")
+		return &ast.RadiateExpr{BaseExpr: ast.NewBase(pos)}
 	case token.IDENT:
 		name := p.cur.Lexeme
 		p.advance()
