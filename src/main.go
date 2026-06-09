@@ -31,16 +31,22 @@ func main() {
 	switch {
 	case *lex:
 		phase = compiler.PhaseLex
+
 	case *parse:
 		phase = compiler.PhaseParse
+
 	case *check:
 		phase = compiler.PhaseCheck
+
 	case *run:
 		phase = compiler.PhaseRun
+
 	case *emitIR, *build:
 		phase = compiler.PhaseEmitIR
+
 	case *compile:
 		phase = compiler.PhaseCompile
+
 	default:
 		*compile = true
 	}
@@ -49,11 +55,13 @@ func main() {
 	if flag.NArg() > 1 {
 		scriptArgs = flag.Args()[1:]
 	}
+
 	res, err := compiler.CompileFileWithOptions(file, phase, compiler.RunOptions{ScriptArgs: scriptArgs})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "solc: %v\n", err)
 		os.Exit(1)
 	}
+
 	if len(res.Errors) > 0 {
 		compiler.PrintErrors(res.Errors)
 		os.Exit(1)
@@ -62,46 +70,57 @@ func main() {
 	switch phase {
 	case compiler.PhaseLex:
 		fmt.Print(compiler.FormatTokens(res.Tokens))
+
 	case compiler.PhaseParse:
 		if res.Program != nil {
 			fmt.Print(dumpProgram(res))
 		}
+
 	case compiler.PhaseCheck:
 		fmt.Println("semantic analysis OK")
+
 	case compiler.PhaseCompile:
 		outPath := *out
 		if outPath == "" {
 			outPath = "output.tac"
 		}
+
 		if err := os.WriteFile(outPath, []byte(res.TAC), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "solc: %v\n", err)
 			os.Exit(1)
 		}
+
 		fmt.Printf("wrote TAC to %s\n", outPath)
+
 	case compiler.PhaseRun:
 		if res.RunErr != nil {
 			fmt.Fprintf(os.Stderr, "solc: %v\n", res.RunErr)
 			os.Exit(1)
 		}
+
 	case compiler.PhaseEmitIR:
 		outPath := *out
 		if outPath == "" {
 			outPath = "output.ll"
 		}
+
 		if err := os.WriteFile(outPath, []byte(res.IR), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "solc: %v\n", err)
 			os.Exit(1)
 		}
+
 		fmt.Printf("wrote LLVM IR to %s\n", outPath)
 		if *build {
 			binPath := "program"
 			if *out != "" {
 				binPath = stringsTrimExt(*out, ".ll")
 			}
+
 			if err := buildBinary(outPath, binPath); err != nil {
 				fmt.Fprintf(os.Stderr, "solc build: %v\n", err)
 				os.Exit(1)
 			}
+
 			fmt.Printf("wrote binary to %s\n", binPath)
 		}
 	}
@@ -111,6 +130,7 @@ func dumpProgram(res *compiler.Result) string {
 	if res.Program == nil {
 		return ""
 	}
+
 	return fmt.Sprintf("Program with %d top-level decls\n", len(res.Program.Decls))
 }
 
@@ -118,6 +138,7 @@ func stringsTrimExt(path, ext string) string {
 	if filepath.Ext(path) == ext {
 		return path[:len(path)-len(ext)]
 	}
+
 	return path
 }
 
@@ -126,9 +147,11 @@ func buildBinary(llPath, binPath string) error {
 	if err != nil {
 		return err
 	}
+
 	cmd := exec.Command("clang", llPath, rtPath, "-o", binPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	return cmd.Run()
 }
 
@@ -138,17 +161,21 @@ func runtimePath() (string, error) {
 		filepath.Join("..", "runtime", "solrt.c"),
 		filepath.Join("..", "..", "runtime", "solrt.c"),
 	}
+
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "..", "runtime", "solrt.c"))
 	}
+
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
 			abs, err := filepath.Abs(c)
 			if err == nil {
 				return abs, nil
 			}
+
 			return c, nil
 		}
 	}
+
 	return "", fmt.Errorf("runtime/solrt.c not found")
 }
