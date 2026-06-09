@@ -62,12 +62,11 @@ func Compile(src, file string, phase Phase) (*Result, error) {
 
 func CompileWithOptions(src, file string, phase Phase, opts RunOptions) (*Result, error) {
 	res := &Result{}
-	l := lexer.New(src)
 	if phase == PhaseLex {
 		res.Tokens = lexer.Tokenize(src)
 		return res, nil
 	}
-	p := parser.New(l, file)
+	p := parser.New(src, file)
 	prog := p.Parse()
 	res.Errors = append(res.Errors, p.Errors()...)
 	res.Program = prog

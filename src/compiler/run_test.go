@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unisc/compiladores/sol/src/lexer"
 	"github.com/unisc/compiladores/sol/src/parser"
 	"github.com/unisc/compiladores/sol/src/semantic"
 	"github.com/unisc/compiladores/sol/src/tac"
@@ -294,8 +293,7 @@ var s string = File.read("%s");
 
 func runSourceWithStdin(t *testing.T, src, stdin string) *vm.VM {
 	t.Helper()
-	l := lexer.New(src)
-	p := parser.New(l, "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	sem := semantic.New("test.sol")
 	sem.Check(prog)

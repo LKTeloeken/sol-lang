@@ -7,7 +7,6 @@ import (
 
 	"github.com/unisc/compiladores/sol/src/ast"
 	"github.com/unisc/compiladores/sol/src/diag"
-	"github.com/unisc/compiladores/sol/src/lexer"
 	"github.com/unisc/compiladores/sol/src/parser"
 )
 
@@ -68,7 +67,7 @@ func expandProgram(prog *ast.Program, currentFile string, loading map[string]boo
 			continue
 		}
 
-		pp := parser.New(lexer.New(string(src)), abs)
+		pp := parser.New(string(src), abs)
 		sub := pp.Parse()
 		errs = append(errs, pp.Errors()...)
 

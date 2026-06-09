@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/unisc/compiladores/sol/src/lexer"
 	"github.com/unisc/compiladores/sol/src/parser"
 	"github.com/unisc/compiladores/sol/src/semantic"
 )
@@ -16,7 +15,7 @@ func TestGenerateTAC(t *testing.T) {
     public ray getX() { emit this.x; }
 }
 var f Foo = new Foo(10);`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := semantic.New("test.sol")
 	a.Check(prog)
@@ -39,7 +38,7 @@ func TestGenerateCallTAC(t *testing.T) {
 }
 var f Foo = new Foo();
 f.bar();`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := semantic.New("test.sol")
 	a.Check(prog)

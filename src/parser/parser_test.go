@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	"github.com/unisc/compiladores/sol/src/ast"
-	"github.com/unisc/compiladores/sol/src/lexer"
 )
 
 func TestParseClass(t *testing.T) {
 	src := `rise Foo { private int x; glow(int x) { this.x = x; } }`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -21,7 +20,7 @@ func TestParseClass(t *testing.T) {
 
 func TestParseTopLevel(t *testing.T) {
 	src := `var x int = 1;`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -33,7 +32,7 @@ func TestParseTopLevel(t *testing.T) {
 
 func TestParseOrbitImport(t *testing.T) {
 	src := `orbit "utils.sol";`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -52,7 +51,7 @@ func TestParseOrbitImport(t *testing.T) {
 
 func TestParseOrbitImportMissingString(t *testing.T) {
 	src := `orbit foo;`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	_ = p.Parse()
 	if len(p.Errors()) == 0 {
 		t.Fatal("expected parse error for non-string after orbit")
@@ -61,7 +60,7 @@ func TestParseOrbitImportMissingString(t *testing.T) {
 
 func TestParseInheritance(t *testing.T) {
 	src := `rise Child radiate Parent { private int x; }`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -73,7 +72,7 @@ func TestParseInheritance(t *testing.T) {
 
 func TestParsePostfixArrayType(t *testing.T) {
 	src := `var nums int[] = [1, 2]; var names string[][];`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -85,7 +84,7 @@ func TestParsePostfixArrayType(t *testing.T) {
 
 func TestParseStarAlias(t *testing.T) {
 	src := `star TodoItems = string[];`
-	p := New(lexer.New(src), "test.sol")
+	p := New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())

@@ -3,14 +3,13 @@ package semantic
 import (
 	"testing"
 
-	"github.com/unisc/compiladores/sol/src/lexer"
 	"github.com/unisc/compiladores/sol/src/parser"
 )
 
 func TestCheckValidProgram(t *testing.T) {
 	src := `rise Foo { private int x; glow(int x) { this.x = x; } public ray getX() { emit this.x; } }
 var f Foo = new Foo(1);`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := New("test.sol")
 	a.Check(prog)
@@ -21,7 +20,7 @@ var f Foo = new Foo(1);`
 
 func TestCheckUnknownClass(t *testing.T) {
 	src := `var x Foo = new Foo(1);`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := New("test.sol")
 	a.Check(prog)
@@ -32,7 +31,7 @@ func TestCheckUnknownClass(t *testing.T) {
 
 func TestCheckTypeMismatch(t *testing.T) {
 	src := `var x int = "hello";`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := New("test.sol")
 	a.Check(prog)
@@ -64,7 +63,7 @@ rise TodoList {
 var t TodoList = new TodoList();
 t.add("a");
 `
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	a := New("test.sol")
 	a.Check(prog)
@@ -75,7 +74,7 @@ t.add("a");
 
 func TestCheckArrayPrefixRejected(t *testing.T) {
 	src := `var x [int] = [1];`
-	p := parser.New(lexer.New(src), "test.sol")
+	p := parser.New(src, "test.sol")
 	prog := p.Parse()
 	if len(p.Errors()) == 0 {
 		t.Fatal("expected parse errors for prefix array syntax")

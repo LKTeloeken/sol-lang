@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/unisc/compiladores/sol/src/ast"
-	"github.com/unisc/compiladores/sol/src/lexer"
 	"github.com/unisc/compiladores/sol/src/parser"
 	"github.com/unisc/compiladores/sol/src/semantic"
 )
@@ -21,7 +20,7 @@ func parseFile(t *testing.T, path, src string) *ast.Program {
 	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 		t.Fatal(err)
 	}
-	p := parser.New(lexer.New(src), path)
+	p := parser.New(src, path)
 	prog := p.Parse()
 	if len(p.Errors()) > 0 {
 		t.Fatalf("parse errors: %v", p.Errors())
@@ -42,7 +41,7 @@ func TestExpandImportsClass(t *testing.T) {
 var g Greeter = new Greeter();`
 	parseFile(t, main, mainSrc)
 
-	prog := parser.New(lexer.New(mainSrc), main).Parse()
+	prog := parser.New(mainSrc, main).Parse()
 	expanded, errs := Expand(prog, main)
 	if len(errs) > 0 {
 		t.Fatalf("expand errors: %v", errs)
@@ -72,7 +71,7 @@ func TestExpandCircularImport(t *testing.T) {
 	parseFile(t, a, `orbit "b.sol";`)
 	parseFile(t, b, `orbit "a.sol";`)
 
-	prog := parser.New(lexer.New(`orbit "b.sol";`), a).Parse()
+	prog := parser.New(`orbit "b.sol";`, a).Parse()
 	_, errs := Expand(prog, a)
 	if len(errs) == 0 {
 		t.Fatal("expected circular import error")
@@ -94,7 +93,7 @@ func TestExpandMissingFile(t *testing.T) {
 	mainSrc := `orbit "missing.sol";`
 	parseFile(t, main, mainSrc)
 
-	prog := parser.New(lexer.New(mainSrc), main).Parse()
+	prog := parser.New(mainSrc, main).Parse()
 	_, errs := Expand(prog, main)
 	if len(errs) == 0 {
 		t.Fatal("expected missing file error")
@@ -111,7 +110,7 @@ func TestExpandImportOrder(t *testing.T) {
 Console.print("from-main");`
 	parseFile(t, main, mainSrc)
 
-	prog := parser.New(lexer.New(mainSrc), main).Parse()
+	prog := parser.New(mainSrc, main).Parse()
 	expanded, errs := Expand(prog, main)
 	if len(errs) > 0 {
 		t.Fatalf("expand errors: %v", errs)

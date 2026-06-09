@@ -6,8 +6,5 @@ build:
 test:
 	go test ./...
 
-run: build
-	./solc --run examples/conta_bancaria.sol
-
 clean:
-	rm -f solc output.tac output.ll program
+	rm -f sollang
