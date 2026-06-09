@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	solbuiltin "github.com/unisc/compiladores/sol/src/builtin"
 	"github.com/unisc/compiladores/sol/src/compiler"
 )
 
@@ -143,39 +144,19 @@ func stringsTrimExt(path, ext string) string {
 }
 
 func buildBinary(llPath, binPath string) error {
-	rtPath, err := runtimePath()
+	tmp, err := os.CreateTemp("", "solrt-*.c")
 	if err != nil {
 		return err
 	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(solbuiltin.SolRT); err != nil {
+		tmp.Close()
+		return err
+	}
+	tmp.Close()
 
-	cmd := exec.Command("clang", llPath, rtPath, "-o", binPath)
+	cmd := exec.Command("clang", llPath, tmp.Name(), "-o", binPath, "-lm")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
 	return cmd.Run()
-}
-
-func runtimePath() (string, error) {
-	candidates := []string{
-		"runtime/solrt.c",
-		filepath.Join("..", "runtime", "solrt.c"),
-		filepath.Join("..", "..", "runtime", "solrt.c"),
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "..", "runtime", "solrt.c"))
-	}
-
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			abs, err := filepath.Abs(c)
-			if err == nil {
-				return abs, nil
-			}
-
-			return c, nil
-		}
-	}
-
-	return "", fmt.Errorf("runtime/solrt.c not found")
 }

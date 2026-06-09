@@ -155,7 +155,7 @@ func TestEmitIR(t *testing.T) {
 
 func TestRuntimePath(t *testing.T) {
 	wd, _ := os.Getwd()
-	rt := filepath.Join(wd, "..", "..", "runtime", "solrt.c")
+	rt := filepath.Join(wd, "..", "..", "runtime", "c", "solrt.c")
 	if _, err := os.Stat(rt); err != nil {
 		t.Fatalf("runtime not found at %s: %v", rt, err)
 	}

@@ -472,11 +472,11 @@ func TestBuildHello(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rtPath, err := filepath.Abs("../../runtime/solrt.c")
+	rtPath, err := filepath.Abs("../../runtime/c/solrt.c")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("clang", llPath, rtPath, "-o", binPath)
+	cmd := exec.Command("clang", llPath, rtPath, "-o", binPath, "-lm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("clang failed: %v\n%s", err, out)
 	}
