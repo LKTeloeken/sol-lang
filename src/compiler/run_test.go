@@ -1,11 +1,7 @@
 package compiler
 
 import (
-	"bytes"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,7 +13,7 @@ import (
 )
 
 func TestRunHello(t *testing.T) {
-	res, err := CompileFile("../../examples/hello.sol", PhaseRun)
+	res, err := RunFile("../../examples/hello.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +26,7 @@ func TestRunHello(t *testing.T) {
 }
 
 func TestRunForRange(t *testing.T) {
-	res, err := CompileFile("../../examples/for_range.sol", PhaseRun)
+	res, err := RunFile("../../examples/for_range.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +45,7 @@ for i in 0..10 {
     sum = sum + i;
 }
 `
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +77,7 @@ for i in 0..100 {
     sum = sum + i;
 }
 `
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +123,7 @@ func TestTimeNow(t *testing.T) {
 if (t <= 0) {
     Console.print("bad time");
 }`
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +145,7 @@ var n int = Args.count();
 var a string = Args.at(0);
 var b string = Args.at(1);
 `
-	res, err := CompileWithOptions(src, "test.sol", PhaseRun, RunOptions{ScriptArgs: []string{"hello", "world"}})
+	res, err := RunWithOptions(src, "test.sol", PhaseRun, RunOptions{ScriptArgs: []string{"hello", "world"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +180,7 @@ var r float = Math.random();
 var m float = Math.max(1.0, 2.0);
 var f int = Math.floor(3.7);
 `
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +225,7 @@ File.append("%s", "b");
 var ok bool = File.exists("%s");
 var s string = File.read("%s");
 `, path, path, path, path)
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,22 +245,6 @@ var s string = File.read("%s");
 	}
 }
 
-func TestEmitIRMainArgs(t *testing.T) {
-	res, err := Compile(`Console.print("x");`, "test.sol", PhaseEmitIR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(res.IR, "define i32 @main(i32 %argc, i8** %argv)") {
-		t.Fatal("expected main with argc/argv")
-	}
-	if !strings.Contains(res.IR, "sol_args_init") {
-		t.Fatal("expected sol_args_init call")
-	}
-	if !strings.Contains(res.IR, "sol_time_now") {
-		t.Fatal("expected sol_time_now declare")
-	}
-}
-
 func TestFileIO(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
@@ -272,7 +252,7 @@ func TestFileIO(t *testing.T) {
 File.write("%s", "hello file");
 var s string = File.read("%s");
 `, path, path)
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +291,7 @@ func runSourceWithStdin(t *testing.T, src, stdin string) *vm.VM {
 }
 
 func TestRunForEach(t *testing.T) {
-	res, err := CompileFile("../../examples/for_each.sol", PhaseRun)
+	res, err := RunFile("../../examples/for_each.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +304,7 @@ func TestRunForEach(t *testing.T) {
 }
 
 func TestRunControlFlow(t *testing.T) {
-	res, err := CompileFile("../../examples/control_flow.sol", PhaseRun)
+	res, err := RunFile("../../examples/control_flow.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +317,7 @@ func TestRunControlFlow(t *testing.T) {
 }
 
 func TestRunScript(t *testing.T) {
-	res, err := CompileFile("../../examples/script.sol", PhaseRun)
+	res, err := RunFile("../../examples/script.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +330,7 @@ func TestRunScript(t *testing.T) {
 }
 
 func TestRunContaBancaria(t *testing.T) {
-	res, err := CompileFile("../../examples/conta_bancaria.sol", PhaseRun)
+	res, err := RunFile("../../examples/conta_bancaria.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +350,7 @@ func TestRunContaBancaria(t *testing.T) {
 }
 
 func TestRunSimpleGetX(t *testing.T) {
-	res, err := CompileFile("../../examples/simple.sol", PhaseRun)
+	res, err := RunFile("../../examples/simple.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +377,7 @@ rise X {
 var x X = new X();
 x.boom();
 `
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +390,7 @@ x.boom();
 }
 
 func TestRunHeranca(t *testing.T) {
-	res, err := CompileFile("../../examples/heranca.sol", PhaseRun)
+	res, err := RunFile("../../examples/heranca.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +411,7 @@ func TestRunHeranca(t *testing.T) {
 
 func TestStringConcat(t *testing.T) {
 	src := `var s string = "n=" + 42;`
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,53 +430,9 @@ func TestStringConcat(t *testing.T) {
 	}
 }
 
-func TestBuildHello(t *testing.T) {
-	if _, err := exec.LookPath("clang"); err != nil {
-		t.Skip("clang not available")
-	}
-
-	res, err := CompileFile("../../examples/hello.sol", PhaseEmitIR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Errors) > 0 {
-		t.Fatalf("errors: %v", res.Errors)
-	}
-
-	dir := t.TempDir()
-	llPath := filepath.Join(dir, "hello.ll")
-	binPath := filepath.Join(dir, "hello")
-	if err := os.WriteFile(llPath, []byte(res.IR), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	rtPath, err := filepath.Abs("../../runtime/c/solrt.c")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("clang", llPath, rtPath, "-o", binPath, "-lm")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("clang failed: %v\n%s", err, out)
-	}
-
-	run := exec.Command(binPath)
-	var stdout bytes.Buffer
-	run.Stdout = &stdout
-	if err := run.Run(); err != nil {
-		t.Fatalf("binary failed: %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Hello, SOL") {
-		t.Fatalf("expected Hello, SOL on stdout, got %q", stdout.String())
-	}
-}
-
 func TestConsolePrintOutput(t *testing.T) {
-	if _, err := exec.LookPath("clang"); err != nil {
-		t.Skip("clang not available")
-	}
-	_ = io.Discard
 	src := `Console.print("Hello, SOL");`
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +445,7 @@ func TestConsolePrintOutput(t *testing.T) {
 }
 
 func TestRunRealTest(t *testing.T) {
-	res, err := CompileFile("../../examples/real-test/main.sol", PhaseRun)
+	res, err := RunFile("../../examples/real-test/main.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +466,7 @@ Console.print("len=", items.length);
 items.remove(0);
 Console.print("first=", items[0]);
 `
-	res, err := Compile(src, "test.sol", PhaseRun)
+	res, err := Run(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,3 +477,4 @@ Console.print("first=", items[0]);
 		t.Fatalf("run error: %v", res.RunErr)
 	}
 }
+

@@ -22,10 +22,7 @@ const (
 	PhaseLex Phase = iota
 	PhaseParse
 	PhaseCheck
-	PhaseCompile
 	PhaseRun
-	PhaseEmitIR
-	PhaseBuild
 )
 
 // RunOptions configures VM execution.
@@ -36,31 +33,29 @@ type RunOptions struct {
 type Result struct {
 	Tokens   []token.Token
 	Program  *ast.Program
-	TAC      string
-	IR       string
 	Errors   []diag.Error
 	Analyzer *semantic.Analyzer
 	VM       *vm.VM
 	RunErr   error
 }
 
-func CompileFile(file string, phase Phase) (*Result, error) {
-	return CompileFileWithOptions(file, phase, RunOptions{})
+func RunFile(file string, phase Phase) (*Result, error) {
+	return RunFileWithOptions(file, phase, RunOptions{})
 }
 
-func CompileFileWithOptions(file string, phase Phase, opts RunOptions) (*Result, error) {
+func RunFileWithOptions(file string, phase Phase, opts RunOptions) (*Result, error) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	return CompileWithOptions(string(src), file, phase, opts)
+	return RunWithOptions(string(src), file, phase, opts)
 }
 
-func Compile(src, file string, phase Phase) (*Result, error) {
-	return CompileWithOptions(src, file, phase, RunOptions{})
+func Run(src, file string, phase Phase) (*Result, error) {
+	return RunWithOptions(src, file, phase, RunOptions{})
 }
 
-func CompileWithOptions(src, file string, phase Phase, opts RunOptions) (*Result, error) {
+func RunWithOptions(src, file string, phase Phase, opts RunOptions) (*Result, error) {
 	res := &Result{}
 	if phase == PhaseLex {
 		res.Tokens = lexer.Tokenize(src)
@@ -93,19 +88,11 @@ func CompileWithOptions(src, file string, phase Phase, opts RunOptions) (*Result
 		return res, nil
 	}
 	gen := tac.New(sem.Classes())
-	res.TAC = gen.Generate(prog)
-	if phase == PhaseCompile {
-		return res, nil
-	}
-	if phase == PhaseRun {
-		machine := vm.New(gen.Instructions(), sem.Classes())
-		machine.SetScriptArgs(opts.ScriptArgs)
-		res.VM = machine
-		res.RunErr = machine.Run()
-		return res, nil
-	}
-	irGen := NewIRGen(sem.Classes())
-	res.IR = irGen.Generate(prog)
+	gen.Build(prog)
+	machine := vm.New(gen.Instructions(), sem.Classes())
+	machine.SetScriptArgs(opts.ScriptArgs)
+	res.VM = machine
+	res.RunErr = machine.Run()
 	return res, nil
 }
 
