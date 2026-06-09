@@ -1,7 +1,7 @@
 .PHONY: build test run clean
 
 build:
-	go build -o solc ./src/main.go
+	go build -o sollang ./src/main.go
 
 test:
 	go test ./...

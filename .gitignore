@@ -5,7 +5,7 @@
 # --- Compilador SOL (solc) — artefatos de build e saída ---
 
 # Binários na raiz
-/solc
+/sollang
 /solls
 /program
 

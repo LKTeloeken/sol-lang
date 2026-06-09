@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	if flag.NArg() < 1 {
-		fmt.Fprintf(os.Stderr, "usage: solc [--lex|--parse|--check|--compile|--run|--emit-ir|--build] [-o out] file.sol\n")
+		fmt.Fprintln(os.Stderr, "usage: solc [options] <file> [args...]")
 		os.Exit(1)
 	}
 
