@@ -70,3 +70,31 @@ func TestParseInheritance(t *testing.T) {
 		t.Fatalf("expected 1 decl, got %d", len(prog.Decls))
 	}
 }
+
+func TestParsePostfixArrayType(t *testing.T) {
+	src := `var nums int[] = [1, 2]; var names string[][];`
+	p := New(lexer.New(src), "test.sol")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	if len(prog.Decls) != 2 {
+		t.Fatalf("expected 2 decls, got %d", len(prog.Decls))
+	}
+}
+
+func TestParseStarAlias(t *testing.T) {
+	src := `star TodoItems = string[];`
+	p := New(lexer.New(src), "test.sol")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	alias, ok := prog.Decls[0].(*ast.TypeAliasDecl)
+	if !ok {
+		t.Fatalf("expected TypeAliasDecl, got %T", prog.Decls[0])
+	}
+	if alias.Name != "TodoItems" || !alias.Type.IsArray || alias.Type.ElemType.Base != "string" {
+		t.Fatalf("unexpected alias: %+v", alias)
+	}
+}

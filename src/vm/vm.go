@@ -144,6 +144,11 @@ func (vm *VM) Run() error {
 				return err
 			}
 			vm.pc++
+		case tac.OpArrayCall:
+			if err := vm.doArrayCall(ins); err != nil {
+				return err
+			}
+			vm.pc++
 		case tac.OpThrow:
 			msg, err := vm.resolveValue(ins.Arg1)
 			if err != nil {
@@ -433,6 +438,8 @@ func valuesEqual(a, b Value) bool {
 		return a.StrVal == b.StrVal
 	case KindNull:
 		return true
+	case KindObject:
+		return a.Object == b.Object
 	default:
 		return false
 	}

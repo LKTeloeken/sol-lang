@@ -26,6 +26,7 @@ const (
 	EMIT
 	FLARE
 	ORBIT
+	STAR
 
 	// General keywords
 	PUBLIC
@@ -91,6 +92,7 @@ var keywords = map[string]Type{
 	"emit":     EMIT,
 	"flare":    FLARE,
 	"orbit":    ORBIT,
+	"star":     STAR,
 	"public":   PUBLIC,
 	"private":  PRIVATE,
 	"var":      VAR,
@@ -169,6 +171,9 @@ func (t Type) String() string {
 
 	case ORBIT:
 		return "orbit"
+
+	case STAR:
+		return "star"
 
 	case PUBLIC:
 		return "public"

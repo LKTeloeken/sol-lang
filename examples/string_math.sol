@@ -1,4 +1,4 @@
-var parts [string] = String.split("one,two,three", ",");
+var parts string[] = String.split("one,two,three", ",");
 for each p in parts {
     Console.print(String.trim(p));
 }

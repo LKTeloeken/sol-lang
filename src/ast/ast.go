@@ -21,7 +21,7 @@ func (t *TypeDesc) String() string {
 		return "void"
 	}
 	if t.IsArray {
-		return "[" + t.ElemType.String() + "]"
+		return t.ElemType.String() + "[]"
 	}
 	return t.Base
 }
@@ -78,6 +78,16 @@ type ImportDecl struct {
 
 func (i *ImportDecl) Pos() Pos       { return i.PosInfo }
 func (i *ImportDecl) topLevelDecl() {}
+
+// TypeAliasDecl defines a named type alias via star Name = Type;
+type TypeAliasDecl struct {
+	PosInfo Pos
+	Name    string
+	Type    *TypeDesc
+}
+
+func (t *TypeAliasDecl) Pos() Pos       { return t.PosInfo }
+func (t *TypeAliasDecl) topLevelDecl() {}
 
 type MemberDecl interface {
 	Node

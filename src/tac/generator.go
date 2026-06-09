@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/unisc/compiladores/sol/src/arraymethods"
 	"github.com/unisc/compiladores/sol/src/ast"
 	"github.com/unisc/compiladores/sol/src/semantic"
 	"github.com/unisc/compiladores/sol/src/stdlib"
@@ -27,7 +28,8 @@ const (
 	OpBeginTry Op = "beginTry"
 	OpEndTry   Op = "endTry"
 	OpBuiltin  Op = "builtin"
-	OpArrayLit Op = "arrayLit"
+	OpArrayLit  Op = "arrayLit"
+	OpArrayCall Op = "arrayCall"
 )
 
 type loopContext struct {
@@ -40,6 +42,7 @@ type Instr struct {
 	Result   string
 	Arg1     string
 	Arg2     string
+	Arg3     string
 	Operator string
 	Label    string
 	Comment  string
@@ -86,6 +89,11 @@ func (i Instr) String() string {
 		return fmt.Sprintf("builtin %s %s", i.Arg1, i.Arg2)
 	case OpArrayLit:
 		return fmt.Sprintf("%s = arrayLit %s", i.Result, i.Arg2)
+	case OpArrayCall:
+		if i.Result != "" {
+			return fmt.Sprintf("%s = arrayCall %s %s %s", i.Result, i.Arg1, i.Arg2, i.Arg3)
+		}
+		return fmt.Sprintf("arrayCall %s %s %s", i.Arg1, i.Arg2, i.Arg3)
 	default:
 		return fmt.Sprintf("; unknown op %s", i.Op)
 	}
@@ -460,6 +468,24 @@ func (g *Generator) genCall(c *ast.CallExpr) string {
 				idStr := stdlib.BuiltinID(id.Name, gf.Field)
 				ins := Instr{Op: OpBuiltin, Arg1: idStr, Arg2: fmt.Sprintf("%d", len(c.Args))}
 				if stdlib.ReturnsVoid(id.Name, gf.Field) {
+					g.emit(ins)
+					return ""
+				}
+				t := g.freshTemp()
+				ins.Result = t
+				g.emit(ins)
+				return t
+			}
+		}
+		if m, ok := arraymethods.Lookup(gf.Field); ok {
+			objType := gf.Object.GetType()
+			if objType != nil && objType.IsArray {
+				lval := g.genLValue(gf.Object)
+				for _, arg := range c.Args {
+					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+				}
+				ins := Instr{Op: OpArrayCall, Arg1: lval, Arg2: gf.Field, Arg3: fmt.Sprintf("%d", len(c.Args))}
+				if m.ReturnType == "void" {
 					g.emit(ins)
 					return ""
 				}

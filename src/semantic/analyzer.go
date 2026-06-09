@@ -3,6 +3,7 @@ package semantic
 import (
 	"fmt"
 
+	"github.com/unisc/compiladores/sol/src/arraymethods"
 	"github.com/unisc/compiladores/sol/src/ast"
 	"github.com/unisc/compiladores/sol/src/diag"
 	"github.com/unisc/compiladores/sol/src/stdlib"
@@ -64,19 +65,21 @@ type ClassInfo struct {
 }
 
 type Analyzer struct {
-	file    string
-	classes map[string]*ClassInfo
-	scopes  []*Scope
-	errors  []diag.Error
-	inRay   bool
-	loopDepth int
-	curClass *ClassInfo
+	file        string
+	classes     map[string]*ClassInfo
+	typeAliases map[string]*ast.TypeDesc
+	scopes      []*Scope
+	errors      []diag.Error
+	inRay       bool
+	loopDepth   int
+	curClass    *ClassInfo
 }
 
 func New(file string) *Analyzer {
 	return &Analyzer{
-		file:    file,
-		classes: make(map[string]*ClassInfo),
+		file:        file,
+		classes:     make(map[string]*ClassInfo),
+		typeAliases: make(map[string]*ast.TypeDesc),
 	}
 }
 
@@ -84,17 +87,57 @@ func (a *Analyzer) Errors() []diag.Error { return a.errors }
 
 func (a *Analyzer) Check(prog *ast.Program) {
 	a.registerBuiltins()
+	a.collectTypeAliases(prog)
 	a.collectClasses(prog)
 	a.pushScope() // shared script scope for top-level variables
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.ClassDecl:
 			a.checkClass(d)
+		case *ast.TypeAliasDecl:
+			// validated in collectTypeAliases
 		default:
 			a.checkTopLevelStmt(d)
 		}
 	}
 	a.popScope()
+}
+
+func (a *Analyzer) collectTypeAliases(prog *ast.Program) {
+	for _, decl := range prog.Decls {
+		ta, ok := decl.(*ast.TypeAliasDecl)
+		if !ok {
+			continue
+		}
+		if stdlib.IsBuiltin(ta.Name) {
+			a.err(ta.Pos(), "type alias %q conflicts with stdlib", ta.Name)
+			continue
+		}
+		if _, exists := a.typeAliases[ta.Name]; exists {
+			a.err(ta.Pos(), "type alias %q already declared", ta.Name)
+			continue
+		}
+		a.typeAliases[ta.Name] = ta.Type
+	}
+	for name := range a.typeAliases {
+		a.detectAliasCycle(name, nil)
+	}
+}
+
+func (a *Analyzer) detectAliasCycle(name string, stack []string) {
+	for _, s := range stack {
+		if s == name {
+			a.err(ast.Pos{}, "circular type alias involving %q", name)
+			return
+		}
+	}
+	t := a.typeAliases[name]
+	if t == nil || t.IsArray {
+		return
+	}
+	if _, ok := a.typeAliases[t.Base]; ok {
+		a.detectAliasCycle(t.Base, append(stack, name))
+	}
 }
 
 func (a *Analyzer) registerBuiltins() {
@@ -121,8 +164,12 @@ func (a *Analyzer) collectClasses(prog *ast.Program) {
 				a.err(c.Pos(), "class name %q is reserved for stdlib", c.Name)
 				continue
 			}
-			if _, exists := a.classes[c.Name]; exists {
+			if _, exists := a.classes[c.Name]; exists && !stdlib.IsBuiltin(c.Name) {
 				a.err(c.Pos(), "class %q already declared", c.Name)
+				continue
+			}
+			if _, isAlias := a.typeAliases[c.Name]; isAlias {
+				a.err(c.Pos(), "class %q conflicts with type alias", c.Name)
 				continue
 			}
 			info := &ClassInfo{
@@ -282,8 +329,9 @@ func (a *Analyzer) checkVarDecl(v *ast.VarDeclStmt, topLevel bool) {
 	}
 	if v.Value != nil {
 		vt := a.checkExpr(v.Value)
-		if vt != nil && v.Type != nil && !typesCompatible(v.Type, vt) {
-			a.err(v.Pos(), "cannot assign %s to %s", vt.String(), v.Type.String())
+		vt = a.emptyArrayCompat(v.Type, vt)
+		if vt != nil && v.Type != nil && !a.typesCompatible(v.Type, vt) {
+			a.err(v.Pos(), "cannot assign %s to %s", a.resolveType(vt).String(), a.resolveType(v.Type).String())
 		}
 	}
 }
@@ -291,9 +339,20 @@ func (a *Analyzer) checkVarDecl(v *ast.VarDeclStmt, topLevel bool) {
 func (a *Analyzer) checkAssign(s *ast.AssignStmt) {
 	lt := a.checkExpr(s.Target)
 	rt := a.checkExpr(s.Value)
-	if lt != nil && rt != nil && !typesCompatible(lt, rt) {
-		a.err(s.Pos(), "cannot assign %s to %s", rt.String(), lt.String())
+	rt = a.emptyArrayCompat(lt, rt)
+	if lt != nil && rt != nil && !a.typesCompatible(lt, rt) {
+		a.err(s.Pos(), "cannot assign %s to %s", a.resolveType(rt).String(), a.resolveType(lt).String())
 	}
+}
+
+func (a *Analyzer) emptyArrayCompat(declared, inferred *ast.TypeDesc) *ast.TypeDesc {
+	if inferred == nil || !inferred.IsArray || inferred.ElemType == nil || inferred.ElemType.Base != "void" {
+		return inferred
+	}
+	if declared != nil && declared.IsArray {
+		return declared.Copy()
+	}
+	return inferred
 }
 
 func (a *Analyzer) checkIf(s *ast.IfStmt) {
@@ -319,11 +378,12 @@ func (a *Analyzer) checkWhile(s *ast.WhileStmt) {
 
 func (a *Analyzer) checkForEach(s *ast.ForEachStmt) {
 	it := a.checkExpr(s.Iter)
-	if it == nil || !it.IsArray {
+	resolved := a.resolveType(it)
+	if resolved == nil || !resolved.IsArray {
 		a.err(s.Pos(), "for each requires array expression")
 	}
 	a.pushScope()
-	elemType := it.ElemType
+	elemType := resolved.ElemType
 	if elemType == nil {
 		elemType = &ast.TypeDesc{Base: "void"}
 	}
@@ -393,7 +453,7 @@ func (a *Analyzer) checkExpr(e ast.Expr) *ast.TypeDesc {
 			a.err(ex.Pos(), "undefined variable %q", ex.Name)
 			result = &ast.TypeDesc{Base: "void"}
 		} else {
-			result = sym.Type
+			result = a.resolveType(sym.Type)
 		}
 	case *ast.ThisExpr:
 		if a.curClass == nil {
@@ -482,9 +542,12 @@ func (a *Analyzer) checkCall(c *ast.CallExpr) *ast.TypeDesc {
 		if id, ok := gf.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
 			return a.checkBuiltinCall(c, id.Name, gf.Field)
 		}
-		objType := a.checkExpr(gf.Object)
+		objType := a.resolveType(a.checkExpr(gf.Object))
 		for _, arg := range c.Args {
 			a.checkExpr(arg)
+		}
+		if objType != nil && objType.IsArray {
+			return a.checkArrayCall(c, gf, objType)
 		}
 		if objType != nil && !objType.IsArray {
 			ci := a.findClass(objType.Base)
@@ -515,6 +578,55 @@ func (a *Analyzer) checkCall(c *ast.CallExpr) *ast.TypeDesc {
 		a.checkExpr(arg)
 	}
 	return &ast.TypeDesc{Base: "void"}
+}
+
+func (a *Analyzer) checkArrayCall(c *ast.CallExpr, gf *ast.GetFieldExpr, arrType *ast.TypeDesc) *ast.TypeDesc {
+	m, ok := arraymethods.Lookup(gf.Field)
+	if !ok {
+		a.err(c.Pos(), "method %q not found on array", gf.Field)
+		return &ast.TypeDesc{Base: "void"}
+	}
+	n := len(c.Args)
+	if n < m.MinArgs || n > m.MaxArgs {
+		if m.MinArgs == m.MaxArgs {
+			a.err(c.Pos(), "array.%s requires %d argument(s), got %d", gf.Field, m.MinArgs, n)
+		} else {
+			a.err(c.Pos(), "array.%s requires between %d and %d argument(s), got %d", gf.Field, m.MinArgs, m.MaxArgs, n)
+		}
+	}
+	elem := arrType.ElemType
+	if elem != nil && elem.Base == "void" {
+		a.err(c.Pos(), "array element type cannot be void")
+	}
+	for i, arg := range c.Args {
+		at := a.checkExpr(arg)
+		if i >= len(m.ArgKinds) {
+			continue
+		}
+		switch m.ArgKinds[i] {
+		case arraymethods.ArgInt:
+			if at != nil && at.Base != "int" && at.Base != "float" {
+				a.err(arg.Pos(), "array.%s argument %d must be int", gf.Field, i+1)
+			}
+		case arraymethods.ArgElem:
+			if elem != nil && at != nil && !a.typesCompatible(elem, at) {
+				a.err(arg.Pos(), "array.%s argument type mismatch: expected %s", gf.Field, a.resolveType(elem).String())
+			}
+		}
+	}
+	if m.Mutates && !isArrayLValue(gf.Object) {
+		a.err(c.Pos(), "array.%s requires assignable array receiver", gf.Field)
+	}
+	return arraymethods.ReturnTypeFor(m, elem)
+}
+
+func isArrayLValue(e ast.Expr) bool {
+	switch e.(type) {
+	case *ast.IdentExpr, *ast.GetFieldExpr, *ast.IndexExpr:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *Analyzer) checkBuiltinCall(c *ast.CallExpr, class, method string) *ast.TypeDesc {
@@ -561,7 +673,7 @@ func (a *Analyzer) checkArgType(pos ast.Pos, t *ast.TypeDesc, spec stdlib.ArgSpe
 	}
 	if spec.IsArray {
 		if !t.IsArray || t.ElemType == nil || t.ElemType.Base != spec.ElemBase {
-			a.err(pos, "%s.%s argument type mismatch: expected [%s]", class, method, spec.ElemBase)
+			a.err(pos, "%s.%s argument type mismatch: expected %s[]", class, method, spec.ElemBase)
 		}
 		return
 	}
@@ -592,7 +704,11 @@ func (a *Analyzer) checkField(g *ast.GetFieldExpr) *ast.TypeDesc {
 		if g.Field == "length" {
 			return &ast.TypeDesc{Base: "int"}
 		}
-		a.err(g.Pos(), "arrays only support .length field")
+		if _, ok := arraymethods.Lookup(g.Field); ok {
+			a.err(g.Pos(), "array method %q must be called with ()", g.Field)
+		} else {
+			a.err(g.Pos(), "arrays only support .length field")
+		}
 		return &ast.TypeDesc{Base: "void"}
 	}
 	if id, ok := g.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
@@ -614,7 +730,7 @@ func (a *Analyzer) checkField(g *ast.GetFieldExpr) *ast.TypeDesc {
 		if declClass != nil {
 			a.checkMemberAccess(declClass, f.Visibility, g.Field, g.Pos(), false)
 		}
-		return f.Type
+		return a.resolveType(f.Type)
 	}
 	if mi := a.findMethod(ci, g.Field); mi != nil {
 		return classType("function") // placeholder for method value
@@ -740,13 +856,32 @@ func classType(name string) *ast.TypeDesc {
 	return &ast.TypeDesc{Base: name}
 }
 
-func typesCompatible(a, b *ast.TypeDesc) bool {
+func (a *Analyzer) resolveType(t *ast.TypeDesc) *ast.TypeDesc {
+	if t == nil {
+		return nil
+	}
+	c := t.Copy()
+	if !c.IsArray {
+		if alias, ok := a.typeAliases[c.Base]; ok {
+			return a.resolveType(alias)
+		}
+		return c
+	}
+	c.ElemType = a.resolveType(c.ElemType)
+	return c
+}
+
+func (a *Analyzer) typesCompatible(x, y *ast.TypeDesc) bool {
+	return typesCompatibleResolved(a.resolveType(x), a.resolveType(y))
+}
+
+func typesCompatibleResolved(a, b *ast.TypeDesc) bool {
 	if a == nil || b == nil {
 		return true
 	}
 	if a.Base == b.Base && a.IsArray == b.IsArray {
 		if a.IsArray {
-			return typesCompatible(a.ElemType, b.ElemType)
+			return typesCompatibleResolved(a.ElemType, b.ElemType)
 		}
 		return true
 	}
@@ -760,6 +895,11 @@ func typesCompatible(a, b *ast.TypeDesc) bool {
 		return true
 	}
 	return false
+}
+
+// TypesCompatible is a package-level helper for tests.
+func TypesCompatible(a, b *ast.TypeDesc) bool {
+	return typesCompatibleResolved(a, b)
 }
 
 // Classes returns the class table for codegen.

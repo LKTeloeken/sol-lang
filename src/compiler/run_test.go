@@ -178,7 +178,7 @@ func TestStringMath(t *testing.T) {
 	src := `
 var len int = String.length("abc");
 var trimmed string = String.trim("  x  ");
-var parts [string] = String.split("a,b", ",");
+var parts string[] = String.split("a,b", ",");
 var has bool = String.contains("hello", "ell");
 var sub string = String.substring("hello", 1, 4);
 var r float = Math.random();
@@ -498,6 +498,40 @@ func TestConsolePrintOutput(t *testing.T) {
 	}
 	_ = io.Discard
 	src := `Console.print("Hello, SOL");`
+	res, err := Compile(src, "test.sol", PhaseRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+}
+
+func TestRunRealTest(t *testing.T) {
+	res, err := CompileFile("../../examples/real-test/main.sol", PhaseRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+	if res.RunErr != nil {
+		t.Fatalf("run error: %v", res.RunErr)
+	}
+}
+
+func TestRunArrayMethods(t *testing.T) {
+	src := `
+var items string[] = [];
+items.push("one");
+items.push("two");
+Console.print("len=", items.length);
+items.remove(0);
+Console.print("first=", items[0]);
+`
 	res, err := Compile(src, "test.sol", PhaseRun)
 	if err != nil {
 		t.Fatal(err)

@@ -53,6 +53,7 @@ SOL foi pensada como oposto conceitual ao **Lua** (*Lua* = lua, *Sol* = sol): me
 | `emit` | Retornar valor de um método | `return` |
 | `flare` | Lançar exceção | `throw` |
 | `orbit` | Importar outro arquivo `.sol` | `import` / `#include` |
+| `star` | Alias de tipo reutilizável | `type` / `typedef` |
 
 ### Keywords gerais
 
@@ -80,7 +81,22 @@ Todo campo, parâmetro e variável deve ter tipo explícito.
 | `string` | Texto | `var msg string = "olá";` |
 | `void` | Sem valor (métodos sem retorno) | omitir `emit` |
 | *NomeDeClasse* | Referência a objeto | `var c ContaBancaria = ...;` |
-| `[Tipo]` | Array | `var nums [int] = [1, 2, 3];` |
+| `Tipo[]` | Array (sintaxe postfix) | `var nums int[] = [1, 2, 3];` |
+
+### Alias de tipo (`star`)
+
+Declare um nome reutilizável para um tipo (top-level):
+
+```sol
+star TodoItems = string[];
+star Contas = ContaBancaria[];
+
+rise TodoList {
+    private TodoItems items;
+}
+```
+
+Equivalente semanticamente a usar `string[]` ou `ContaBancaria[]` diretamente.
 
 ### Declaração de variável
 
@@ -287,7 +303,7 @@ for i in start..end {
 ### `for each` (arrays)
 
 ```sol
-var nums [int] = [1, 2, 3];
+var nums int[] = [1, 2, 3];
 var first int = nums[0];
 var n int = nums.length;
 
@@ -296,7 +312,25 @@ for each x in nums {
 }
 ```
 
-A expressão após `in` deve ser um array (`[Tipo]`). Arrays suportam indexação `arr[i]` (índice `int`) e a propriedade `.length`.
+A expressão após `in` deve ser um array (`Tipo[]`). Arrays suportam indexação `arr[i]` (índice `int`), a propriedade `.length` e métodos de instância:
+
+| Método | Assinatura | Efeito |
+|--------|------------|--------|
+| `push` | `(elem T) void` | adiciona ao final |
+| `pop` | `() T` | remove e retorna o último |
+| `remove` | `(index int) void` | remove por índice |
+| `insert` | `(index int, elem T) void` | insere na posição |
+| `contains` | `(elem T) bool` | busca linear |
+| `clear` | `() void` | esvazia o array |
+| `isEmpty` | `() bool` | `true` se vazio |
+
+```sol
+var items string[] = [];
+items.push("a");
+items.remove(0);
+```
+
+Literal vazio `[]` exige tipo declarado no LHS: `var xs string[] = [];`
 
 ### `break` e `continue`
 
@@ -380,7 +414,7 @@ var s string = Time.format(now, "2006-01-02 15:04:05");
 ```sol
 var n int = String.length("abc");
 var t string = String.trim("  hi  ");
-var parts [string] = String.split("a,b", ",");
+var parts string[] = String.split("a,b", ",");
 var ok bool = String.contains("abc", "b");
 var sub string = String.substring("hello", 1, 4);
 ```
@@ -389,7 +423,7 @@ var sub string = String.substring("hello", 1, 4);
 |--------|------------|
 | `length` | `(s string) int` |
 | `trim` | `(s string) string` |
-| `split` | `(s string, sep string) [string]` |
+| `split` | `(s string, sep string) string[]` |
 | `contains` | `(s string, sub string) bool` |
 | `substring` | `(s string, start int, end int) string` |
 
@@ -592,9 +626,10 @@ Exemplos prontos:
 | `for i in 0..10` (range) | Implementado |
 | `break`, `continue` | Implementado |
 | Concatenação de strings (`+`) | Implementado |
-| Arrays, `for each`, `arr[i]`, `.length` | Implementado |
+| Arrays postfix `Tipo[]`, `for each`, `arr[i]`, `.length`, métodos `push`/`pop`/… | Implementado (VM) |
+| Aliases de tipo `star Nome = Tipo;` | Implementado |
 | Imports `orbit "arquivo.sol"` | Implementado |
-| Backend nativo (`--build`) | Experimental (hello world + subset) |
+| Backend nativo (`--build`) | Experimental; aliases, métodos de array e `String.split` só na VM |
 | Múltipla herança | Não suportado |
 | Modificadores além de public/private | Não suportado |
 | Tipos genéricos | Não suportado |
@@ -688,4 +723,4 @@ try {
 
 ---
 
-_Versão do guia: 1.3 — Stdlib onda 1: `Time`, `String`, `Math`, `Args`, `File.append`/`exists`._
+_Versão do guia: 1.4 — Arrays postfix `T[]`, aliases `star`, métodos de lista na VM._

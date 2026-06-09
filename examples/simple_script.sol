@@ -24,7 +24,7 @@ rise Fibonacci {
 
 var fibonacci Fibonacci = new Fibonacci();
 
-var nums [int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+var nums int[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 for each n in nums {
 

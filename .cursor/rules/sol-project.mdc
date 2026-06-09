@@ -27,19 +27,20 @@ SOL é o oposto conceitual de Lua: mesma ideia de linguagem de script, paradigma
 
 - **Estaticamente tipada**, orientada a objetos.
 - Encapsulamento (`public` / `private`), **herança simples**, construtores, métodos, `flare`/`try`/`catch`.
-- Keywords com tema solar: `rise` (classe), `glow` (construtor), `ray` (método), `radiate` (extends/super), `emit` (return), `flare` (throw), `orbit` (import de `.sol`).
-- Stdlib embutida (registro em `internal/stdlib`): `Console`, `File`, `Time`, `String`, `Math`, `Args`; TAC `OpBuiltin`; LLVM em `runtime/solrt.c`.
+- Keywords com tema solar: `rise` (classe), `glow` (construtor), `ray` (método), `radiate` (extends/super), `emit` (return), `flare` (throw), `orbit` (import de `.sol`), `star` (alias de tipo).
+- Arrays postfix: `int[]`, `string[]`, `ContaBancaria[]`; métodos `push`, `pop`, `remove`, `insert`, `contains`, `clear`, `isEmpty` (VM via `OpArrayCall`).
+- Stdlib embutida (registro em `src/stdlib`): `Console`, `File`, `Time`, `String`, `Math`, `Args`; TAC `OpBuiltin`; LLVM em `runtime/solrt.c`.
 
 ## Estrutura do repositório e pipeline
 
 ```
 source.sol
-  → lexer (internal/lexer)     → []token.Token
-  → parser (internal/parser)   → *ast.Program
-  → modules (internal/modules) → Expand orbit (a partir de --check)
-  → semantic (internal/semantic) → tipos, escopos, classes
-  → tac (internal/tac)         → TAC (instruções)
-  → vm (internal/vm)           → execução (--run)
+  → lexer (src/lexer)     → []token.Token
+  → parser (src/parser)   → *ast.Program
+  → modules (src/modules) → Expand orbit (a partir de --check)
+  → semantic (src/semantic) → tipos, escopos, classes, aliases star
+  → tac (src/tac)         → TAC (instruções, OpArrayCall)
+  → vm (src/vm)           → execução (--run)
   → compiler/irgen (LLVM)      → --emit-ir / --build (experimental)
 ```
 
@@ -47,17 +48,19 @@ source.sol
 
 | Pacote | Responsabilidade |
 |--------|------------------|
-| `cmd/solc` | CLI: flags `--lex`, `--parse`, `--check`, `--compile`, `--run`, `--emit-ir`, `--build` |
-| `internal/token` | `TokenType`, `Token`, mapa `Keywords` |
-| `internal/lexer` | `Lexer`, `NextToken()`, comentários `//` e `/* */` |
-| `internal/ast` | Nós AST (`Program`, `ClassDecl`, `MethodDecl`, statements, expressions) |
-| `internal/parser` | Descendente recursivo + Pratt para expressões; `radiate` em declaração e super-call; `orbit` → `ImportDecl` |
-| `internal/modules` | `Expand()`: resolve caminhos, parse recursivo, inline de decls, detecção de ciclo |
-| `internal/semantic` | Tabela de símbolos, checagem de tipos, `ClassInfo`/`MethodInfo` |
-| `internal/tac` | `Generator`, `Instr`, labels, calls, throw/try |
-| `internal/vm` | Interpreta TAC, objetos, herança, stdlib, exceções |
-| `internal/compiler` | `Compile()` / `CompileFile()`, orquestra fases, LLVM em `irgen.go` |
-| `internal/diag` | Erros `[ERROR] arquivo:linha:col — msg` |
+| `src/main.go` | CLI: flags `--lex`, `--parse`, `--check`, `--compile`, `--run`, `--emit-ir`, `--build` |
+| `src/token` | `TokenType`, `Token`, mapa `Keywords` |
+| `src/lexer` | `Lexer`, `NextToken()`, comentários `//` e `/* */` |
+| `src/ast` | Nós AST (`Program`, `ClassDecl`, `TypeAliasDecl`, statements, expressions) |
+| `src/parser` | Descendente recursivo + Pratt; `orbit`, `star`, `radiate` |
+| `src/modules` | `Expand()`: resolve caminhos, parse recursivo, inline de decls, detecção de ciclo |
+| `src/semantic` | Tabela de símbolos, checagem de tipos, aliases `star`, `ClassInfo`/`MethodInfo` |
+| `src/arraymethods` | Registro de métodos de array (`push`, `pop`, …) |
+| `src/tac` | `Generator`, `Instr`, `OpArrayCall`, labels, calls, throw/try |
+| `src/vm` | Interpreta TAC, objetos, arrays mutáveis, stdlib, exceções |
+| `src/compiler` | `Compile()` / `CompileFile()`, orquestra fases, LLVM em `irgen.go` |
+| `src/stdlib` | Stdlib embutida |
+| `src/diag` | Erros `[ERROR] arquivo:linha:col — msg` |
 | `runtime/solrt.c` | Runtime C para binário nativo (`--build`) |
 
 Módulo Go: `github.com/unisc/compiladores/sol` (local, em `go.mod`).
@@ -65,19 +68,19 @@ Módulo Go: `github.com/unisc/compiladores/sol` (local, em `go.mod`).
 ### Fases do compilador (ordem)
 
 1. **Léxico** — literais, keywords solares, operadores (`..` range), `ILLEGAL` com linha/coluna.
-2. **Sintático** — AST; `TopLevelDecl` = classe, statement ou `orbit "path.sol";`; `radiate` duplo papel (herança vs `radiate.metodo()`).
+2. **Sintático** — AST; `TopLevelDecl` = classe, alias `star`, statement ou `orbit "path.sol";`.
 3. **Imports** — `modules.Expand` achata `orbit` antes do semântico (`--check` em diante); caminho relativo ao arquivo fonte.
-4. **Semântico** — uso antes de declaração, tipos de `emit`, `new` em classe existente, `flare` só em método, arity de calls, `radiate` aponta para pai válido.
-5. **TAC** — temporários `tN`, `call Classe.metodo`, `throw`, labels para if/while/try.
-6. **VM** — dispatch de métodos, `this`, super via `radiate`, globals top-level `__program`.
-7. **LLVM** (opcional) — `i64`/`double`/`i1`, `@sol_panic`, top-level em `@main` implícito.
+4. **Semântico** — tipos postfix `T[]`, aliases `star`, métodos de array, `emit`, `new`, `flare`, `radiate`.
+5. **TAC** — temporários `tN`, `call`, `arrayCall`, `throw`, labels para if/while/try.
+6. **VM** — dispatch de métodos, `OpArrayCall` com write-back, `this`, super via `radiate`.
+7. **LLVM** (opcional) — subconjunto; aliases e métodos de array são VM-only.
 
 ### Convenções ao alterar código
 
-- Nova keyword/token → `internal/token`, `internal/lexer`, testes em `lexer_test.go`.
-- Nova construção sintática → `internal/parser`, nós em `internal/ast`, `parser_test.go`.
-- Nova regra de tipo → `internal/semantic`, `testdata/invalid/*.sol`, `analyzer_test.go`.
-- Novo comportamento em runtime → `internal/tac` + `internal/vm` (e LLVM se aplicável).
+- Nova keyword/token → `src/token`, `src/lexer`, testes em `lexer_test.go`.
+- Nova construção sintática → `src/parser`, nós em `src/ast`, `parser_test.go`.
+- Nova regra de tipo → `src/semantic`, `testdata/invalid/*.sol`, `analyzer_test.go`.
+- Novo comportamento em runtime → `src/tac` + `src/vm` (e LLVM se aplicável).
 - Exemplos válidos em `examples/`; inválidos em `testdata/invalid/`.
 - Atualizar [`SYNTAX.md`](SYNTAX.md) e, se gramática mudar, [`context.md`](context.md) §5 (EBNF).
 

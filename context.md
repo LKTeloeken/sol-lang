@@ -323,13 +323,17 @@ ExprList        = Expression { "," Expression } ;
 ### 5.5 Types
 
 ```ebnf
-Type            = BaseType | ClassType | ArrayType ;
+Type            = BaseType | ClassType | AliasType | ArrayType ;
 
 BaseType        = "int" | "float" | "bool" | "string" | "void" ;
 
 ClassType       = Identifier ;
 
-ArrayType       = "[" Type "]" ;
+AliasType       = Identifier ;   /* resolved via star decl */
+
+ArrayType       = Type "[]" ;
+
+TypeAliasDecl   = "star" Identifier "=" Type ";" ;
 ```
 
 | Type     | Syntax                       | Notes          |
@@ -340,7 +344,8 @@ ArrayType       = "[" Type "]" ;
 | `string` | `private string titular;`    |                |
 | `void`   | method with no `emit`        |                |
 | class    | `ContaBancaria`              | reference type |
-| array    | `[ContaBancaria]` or `[int]` | for `for each` |
+| array    | `int[]`, `ContaBancaria[]`, `string[]` | postfix; `for each`, métodos |
+| alias    | `star TodoItems = string[];`           | top-level only |
 
 ### 5.6 Terminals (Tokens)
 

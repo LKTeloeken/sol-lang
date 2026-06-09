@@ -110,6 +110,36 @@ func TestCheckBuiltinWrongArgs(t *testing.T) {
 	}
 }
 
+func TestCheckArrayPrefixSyntax(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/array_prefix_syntax.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected parse errors for prefix array syntax")
+	}
+}
+
+func TestCheckTypeAliasCycle(t *testing.T) {
+	res, err := CompileFile("../../testdata/invalid/type_alias_cycle.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("expected circular type alias error")
+	}
+}
+
+func TestCompileRealTest(t *testing.T) {
+	res, err := CompileFile("../../examples/real-test/main.sol", PhaseCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) > 0 {
+		t.Fatalf("errors: %v", res.Errors)
+	}
+}
+
 func TestEmitIR(t *testing.T) {
 	res, err := CompileFile("../../examples/simple.sol", PhaseEmitIR)
 	if err != nil {

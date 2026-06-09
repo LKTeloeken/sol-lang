@@ -34,6 +34,8 @@ func (p *Parser) Parse() *ast.Program {
 			prog.Decls = append(prog.Decls, p.parseClassDecl())
 		case token.ORBIT:
 			prog.Decls = append(prog.Decls, p.parseImportDecl())
+		case token.STAR:
+			prog.Decls = append(prog.Decls, p.parseTypeAliasDecl())
 		default:
 			prog.Decls = append(prog.Decls, p.parseTopLevelStmt())
 		}
@@ -161,7 +163,7 @@ func (p *Parser) parseParamList() []ast.Param {
 
 func (p *Parser) isTypeStart() bool {
 	switch p.cur.Type {
-	case token.INT_TYPE, token.FLOAT_TYPE, token.BOOL_TYPE, token.STRING_TYPE, token.VOID_TYPE, token.LBRACK, token.IDENT:
+	case token.INT_TYPE, token.FLOAT_TYPE, token.BOOL_TYPE, token.STRING_TYPE, token.VOID_TYPE, token.IDENT:
 		return true
 	default:
 		return false
@@ -170,12 +172,6 @@ func (p *Parser) isTypeStart() bool {
 
 func (p *Parser) parseType() *ast.TypeDesc {
 	pos := p.pos()
-	if p.cur.Type == token.LBRACK {
-		p.advance()
-		elem := p.parseType()
-		p.expect(token.RBRACK)
-		return &ast.TypeDesc{Pos: pos, IsArray: true, ElemType: elem}
-	}
 	base := p.cur.Lexeme
 	switch p.cur.Type {
 	case token.INT_TYPE, token.FLOAT_TYPE, token.BOOL_TYPE, token.STRING_TYPE, token.VOID_TYPE:
@@ -186,7 +182,24 @@ func (p *Parser) parseType() *ast.TypeDesc {
 		p.errorf("expected type, got %s", p.cur.Type)
 		return &ast.TypeDesc{Pos: pos, Base: "void"}
 	}
-	return &ast.TypeDesc{Pos: pos, Base: base}
+	typ := &ast.TypeDesc{Pos: pos, Base: base}
+	for p.cur.Type == token.LBRACK {
+		p.advance()
+		p.expect(token.RBRACK)
+		typ = &ast.TypeDesc{Pos: pos, IsArray: true, ElemType: typ}
+	}
+	return typ
+}
+
+func (p *Parser) parseTypeAliasDecl() *ast.TypeAliasDecl {
+	pos := p.pos()
+	p.expect(token.STAR)
+	name := p.cur.Lexeme
+	p.expect(token.IDENT)
+	p.expect(token.ASSIGN)
+	typ := p.parseType()
+	p.expect(token.SEMICOLON)
+	return &ast.TypeAliasDecl{PosInfo: pos, Name: name, Type: typ}
 }
 
 func (p *Parser) parseBlock() *ast.BlockStmt {
