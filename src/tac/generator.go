@@ -114,6 +114,11 @@ func New(classes map[string]*semantic.ClassInfo) *Generator {
 
 func (g *Generator) Generate(prog *ast.Program) string {
 	g.Build(prog)
+	return g.Format()
+}
+
+// Format renders the already-built instruction list as TAC text.
+func (g *Generator) Format() string {
 	var b strings.Builder
 	for _, ins := range g.instrs {
 		b.WriteString(ins.String())

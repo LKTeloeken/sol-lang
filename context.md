@@ -1,6 +1,6 @@
 # SOL — Scripting Object Language
 
-## Complete Language Specification & Compiler Implementation Guide
+## Complete Language Specification & Interpreter Implementation Guide
 
 > **Purpose of this document:** This file provides full context about the SOL programming language — its design rationale, syntax, grammar, and compiler implementation plan — intended to be used as context for AI assistants helping with development.
 
@@ -406,28 +406,35 @@ EOF, ILLEGAL
 
 ---
 
-## 7. Compiler Implementation Plan
+## 7. Interpreter Implementation
 
-The SOL compiler is implemented in **Go**, organized as a standard Go module with one package per compiler phase.
+SOL is implemented in **Go**, organized as a Go module with one package per phase. The project
+originally targeted a native compiler (LLVM IR + `clang`); that backend was **removed**, leaving
+the interpreted path: source → lexer → parser → module expansion → semantic → TAC → VM. The
+parser/lexer use the [participle](https://github.com/alecthomas/participle) library.
 
 ### 7.1 Project Structure
 
 ```
-sol/
+sol-lang/
 ├── go.mod                    — module: github.com/unisc/compiladores/sol
-├── Makefile                  — build, test, run commands
-├── cmd/solc/main.go          — CLI driver
-├── internal/
-│   ├── token/                — TokenType enum, Token struct, Keywords map
-│   ├── lexer/                — Lexer struct, NextToken() method
-│   ├── ast/                  — Node, Statement, Expression interfaces
-│   ├── parser/               — recursive descent + Pratt parser
-│   ├── semantic/             — symbol table, type checker
+├── Makefile                  — build, test, run, tac
+├── src/
+│   ├── main.go               — CLI driver (sollang)
+│   ├── token/                — Token type + keywords (lexical definition)
+│   ├── lexer/                — participle stateful lexer + token stream for -lex
+│   ├── ast/                  — Node, Stmt, Expr interfaces
+│   ├── parser/               — GLC via participle (grammar.go) + AST conversion (convert.go)
+│   ├── semantic/             — symbol table, type checker, class/inheritance info
+│   ├── modules/              — orbit import expansion
 │   ├── tac/                  — Three-Address Code generator
-│   └── llvm/                 — LLVM IR generator (bonus backend)
-├── runtime/solrt.c           — minimal runtime (panic, helpers)
+│   ├── vm/                   — virtual machine that executes the TAC + builtins
+│   ├── stdlib/               — static builtin registry (Console/File/Time/String/Math/Args)
+│   ├── arraymethods/         — array method registry (push/pop/...)
+│   ├── compiler/             — pipeline orchestration (driver)
+│   └── diag/                 — diagnostics
 ├── examples/                 — valid SOL programs
-└── testdata/                 — valid + invalid test programs
+└── testdata/invalid/         — programs that must fail
 ```
 
 ### 7.2 Execution Pipeline
@@ -435,40 +442,34 @@ sol/
 ```
 source.sol
     │
-    ▼  io.ReadFile()
-Lexer.NextToken()        → produces []Token
+    ▼  os.ReadFile()
+participle lexer + parser → AST (Abstract Syntax Tree)
     │
     ▼
-Parser.Parse()           → produces AST (Abstract Syntax Tree)
+modules.Expand()         → inlines orbit imports
     │
     ▼
 SemanticAnalyzer.Check() → annotates AST, validates types and scopes
     │
     ▼
-Generator.Generate()     → emits Three-Address Code (TAC)
+tac.Generator.Build()    → emits Three-Address Code (TAC)
     │
     ▼
-output.tac
-    │
-    ▼  (optional)
-LLVMGen.Generate()       → emits LLVM IR
-    │
-    ▼
-clang output.ll runtime/solrt.c -o program
+vm.VM.Run()              → interprets the TAC (default)
+                           (or: -tac prints the TAC instead of running)
 ```
 
 ### 7.3 CLI Flags
 
-The compiled binary is named `solc` and supports the following flags:
+The binary is named `sollang`. Running is the default; flags select earlier phases:
 
 ```bash
-./solc --lex      source.sol    # run lexer only, print tokens
-./solc --parse    source.sol    # run lexer + parser, print AST
-./solc --check    source.sol    # run up to semantic analysis
-./solc --compile  source.sol    # full pipeline, emit TAC output
-./solc --emit-ir  source.sol    # emit LLVM IR to output.ll
-./solc --build    source.sol    # TAC → LLVM IR → native binary
-./solc -o path    source.sol    # custom output path
+./sollang            source.sol    # compile to TAC and interpret (default)
+./sollang -lex       source.sol    # run lexer only, print tokens
+./sollang -parse     source.sol    # run lexer + parser, print AST summary
+./sollang -check     source.sol    # run up to semantic analysis
+./sollang -tac       source.sol    # emit TAC (stdout, or -o file)
+./sollang -tac -o path source.sol  # write TAC to a file
 ```
 
 ---
@@ -497,13 +498,16 @@ The compiled binary is named `solc` and supports the following flags:
 
 **Key concepts:**
 
-- The `Lexer` struct holds the source string, current position, current character, line, and column.
-- `NextToken()` is called repeatedly to advance through the source.
-- Whitespace and comments (`//` single-line, `/* */` multi-line) are skipped silently.
-- When an identifier is scanned, look it up in the `Keywords` map — if found, emit the keyword token; otherwise emit `IDENT`.
-- Errors produce an `ILLEGAL` token with a descriptive message, line, and column.
+- Tokens are defined declaratively as participle stateful-lexer rules in `lexer.Def`
+  (`src/lexer/lexer.go`): floats/ints, strings, multi-char operators, then keywords (which must
+  precede `Ident` so they win), identifiers and single-char punctuation.
+- Whitespace and comments (`//` single-line, `/* */` multi-line) are elided by the parser.
+- Keywords are matched with `\b` boundaries so `int` is a type but `integer` is an `Ident`.
+- A thin wrapper (`Lexer.NextToken` / `Tokenize` + `mapToken`) re-maps participle tokens to the
+  `token` package types — used to print the `-lex` token stream and to document the lexical spec.
+- Unrecognized input becomes an `Illegal`/`ILLEGAL` token with line and column.
 
-**Deliverables:** `lexer/lexer.go`, `lexer/lexer_test.go`
+**Deliverables:** `src/token/token.go`, `src/lexer/lexer.go`, `src/lexer/lexer_test.go`
 
 **Example — Token struct in Go:**
 
@@ -520,14 +524,16 @@ type Token struct {
 
 ### Phase 03 — Syntactic Analysis (Parser)
 
-**Goal:** Consume the token stream from the Lexer and build an Abstract Syntax Tree (AST).
+**Goal:** Parse the source and build an Abstract Syntax Tree (AST).
 
 **Key concepts:**
 
-- Implementation strategy: **Recursive Descent Parser** — one function per grammar rule.
-- Each grammar production maps directly to a Go function: `parseProgram()`, `parseClassDecl()`, `parseMethodDecl()`, `parseStatement()`, `parseExpression()`, etc.
-- Expression parsing uses **Pratt parsing** (top-down operator precedence) to handle the precedence hierarchy correctly.
-- The `radiate` keyword serves double duty: as inheritance marker in class declarations, and as super-call prefix inside method bodies — the parser must handle both contexts.
+- Implementation strategy: **participle** — the GLC is declared as Go struct tags in
+  `src/parser/grammar.go` (one struct per grammar production). participle generates the LL parser.
+- A conversion pass (`src/parser/convert.go`) maps the participle parse tree into the internal AST
+  in `src/ast/`, folding operator-chain lists into left-associative binary nodes.
+- Operator precedence is encoded in the grammar layering (`PExpr → PAndExpr → … → PUnary → PPostfix → PPrimary`).
+- The `radiate` keyword serves double duty: as inheritance marker in class declarations, and as super-call prefix inside method bodies — the grammar handles both contexts.
 - Errors should be descriptive ("expected '{' after class name at line 5, column 12") and, when possible, the parser should attempt error recovery to report multiple errors in one pass.
 
 **AST node examples:**
@@ -551,7 +557,7 @@ type RayDecl struct {
 }
 ```
 
-**Deliverables:** `ast/nodes.go`, `ast/declarations.go`, `ast/visitor.go`, `parser/parser.go`, `parser/parser_test.go`
+**Deliverables:** `src/ast/ast.go`, `src/parser/grammar.go`, `src/parser/convert.go`, `src/parser/parser.go`, `src/parser/parser_test.go`
 
 ---
 
@@ -607,78 +613,77 @@ throw "Deposit value must be positive"
 L1:
 ```
 
-**Deliverables:** `internal/tac/instruction.go`, `internal/tac/generator.go`, `internal/tac/generator_test.go`
+**Deliverables:** `src/tac/generator.go`, `src/tac/generator_test.go`
 
 ---
 
-### Phase 07 — LLVM Backend (Bonus)
+### Phase 07 — LLVM Backend (Removed)
 
-**Goal:** Lower the annotated AST to LLVM IR and produce a native executable.
-
-**Key concepts:**
-
-- Use `llir/llvm` (pure Go) to generate LLVM IR without CGO
-- Invoke system `clang` to link IR with `runtime/solrt.c`
-- Top-level statements are wrapped in an implicit `@main` function
-- `int` → `i64`, `float` → `double`, `bool` → `i1`, `string` → `{ i8*, i64 }`
-- `flare` → call `@sol_panic(i8* msg)`; v1 uses static dispatch
-
-**Deliverables:** `internal/llvm/irgen.go`, `runtime/solrt.c`
+> This phase was an experimental native backend (TAC → LLVM IR → `clang` → binary). It has been
+> **removed** from the project, which now ships only the interpreted path (TAC executed by the VM).
 
 ---
 
-### Phase 06 — Compiler Driver & CLI
+### Phase 06 — Interpreter Driver & CLI
 
-**Goal:** Wire all phases together into a working command-line compiler.
+**Goal:** Wire all phases together into a working command-line interpreter.
 
 **Key concepts:**
 
-- `main.go` reads the source file, calls each phase in sequence, and propagates errors.
+- `src/main.go` reads the source file, calls `compiler.RunFileWithOptions`, and propagates errors.
 - Any phase can return a list of errors — all errors are collected and printed together before stopping, so the user sees all problems at once, not just the first one.
 - Error output format: `[ERROR] filename.sol:line:column — message`
-- The `--lex`, `--parse`, `--check` flags allow stopping the pipeline at a specific phase (useful for debugging and grading).
+- The `-lex`, `-parse`, `-check`, `-tac` flags stop the pipeline at a specific phase (useful for
+  debugging and grading); with no flag the program is executed by the VM.
 
 **Makefile targets:**
 
 ```makefile
 build:
-	go build -o solc .
+	go build -o sollang ./src/main.go
 
 test:
 	go test ./...
 
-run:
-	./solc --compile examples/conta_bancaria.sol
+run: build
+	./sollang examples/conta_bancaria.sol
+
+tac: build
+	./sollang -tac examples/conta_bancaria.sol
 
 clean:
-	rm -f solc
+	rm -f sollang output.tac
 ```
 
-**Deliverables:** `main.go`, `cmd/solc.go`, `Makefile`, `examples/*.sol`, integration test suite
+**Deliverables:** `src/main.go`, `src/compiler/driver.go`, `Makefile`, `examples/*.sol`, test suite
 
 ---
 
 ## 9. Summary Table
 
-| Phase | Name                  | Input            | Output                     | Go Packages       |
-| ----- | --------------------- | ---------------- | -------------------------- | ----------------- |
-| 01    | Grammar Specification | —                | EBNF doc + token constants | `lexer/token.go`  |
-| 02    | Lexical Analysis      | Source string    | `[]Token`                  | `lexer/`          |
-| 03    | Syntactic Analysis    | `[]Token`        | AST                        | `ast/`, `parser/` |
-| 04    | Semantic Analysis     | AST              | Annotated AST              | `semantic/`       |
-| 05    | Code Generation       | Annotated AST    | TAC instructions           | `internal/tac/`   |
-| 06    | Compiler Driver       | Source file path | TAC output file            | `cmd/solc/`       |
-| 07    | LLVM Backend          | Annotated AST    | Native binary              | `internal/llvm/`  |
+| Phase | Name                  | Input            | Output                     | Go Packages                |
+| ----- | --------------------- | ---------------- | -------------------------- | -------------------------- |
+| 01    | Grammar Specification | —                | EBNF doc + token constants | `src/token/`               |
+| 02    | Lexical Analysis      | Source string    | `[]Token`                  | `src/lexer/`               |
+| 03    | Syntactic Analysis    | Source string    | AST                        | `src/ast/`, `src/parser/`  |
+| 04    | Semantic Analysis     | AST              | Annotated AST              | `src/semantic/`            |
+| 05    | Code Generation       | Annotated AST    | TAC instructions           | `src/tac/`                 |
+| 06    | Execution             | TAC instructions | Program output             | `src/vm/`                  |
+| 07    | Driver & CLI          | Source file path | Output / TAC               | `src/main.go`, `src/compiler/` |
 
 ---
 
 ## 10. Key Design Decisions
 
 **Why Go?**
-Go has no dependency on external parser frameworks, compiles to a single binary, and has an excellent standard library for string processing and I/O. Its explicit interfaces are a natural fit for the Visitor pattern used across multiple compiler phases.
+Go compiles to a single binary and has an excellent standard library for string processing and I/O. Its explicit interfaces are a natural fit for the type switches used across multiple phases.
 
-**Why Recursive Descent?**
-The grammar is LL(1)-friendly (with minimal lookahead needed). Recursive descent is readable, debuggable, and maps one-to-one with the EBNF grammar rules — making it easy to verify correctness by inspection.
+**Why participle (lexer + parser)?**
+The assignment suggests using a ready-made lexer/parser library. participle builds a stateful
+lexer and an LL parser directly from struct-tag grammar rules, so the GLC lives next to the AST
+types and stays easy to verify by inspection. Left-recursion is avoided by encoding binary
+operator chains as left-node + RHS lists, folded into left-associative nodes during AST
+conversion (`src/parser/convert.go`).
 
 **Why TAC as the final output?**
 Three-Address Code is the standard intermediate representation taught in compilers courses. It is human-readable, easy to verify manually, and close enough to assembly to demonstrate code generation concepts without requiring a full machine code backend.
@@ -689,14 +694,15 @@ Multiple inheritance introduces diamond-problem complexity that is out of scope 
 **Why static typing?**
 A statically-typed language allows type errors to be caught at compile time (in the semantic phase) rather than at runtime, which is a better pedagogical choice for demonstrating semantic analysis. It also makes the type checker significantly simpler to implement correctly.
 
-**Why LLVM?**
-LLVM provides a production-grade backend: optimization passes, multi-platform code generation, and a well-documented IR. The frontend (lexer through semantic analysis) stays in pure Go; LLVM handles machine code so the project can produce runnable binaries beyond TAC.
-
-**Why llir/llvm?**
-Official LLVM Go bindings were removed from upstream LLVM (2022). `llir/llvm` is a pure Go library for generating LLVM IR — no CGO, no compiling LLVM from source. External tools (`clang`, `llc`) compile the emitted `.ll` files.
+**Why a TAC VM instead of a native backend?**
+An experimental LLVM/`clang` backend was prototyped and then removed: it added a C runtime, CGO-free
+IR generation and an external toolchain dependency for little pedagogical gain. Interpreting the TAC
+with a small VM keeps the project to a single Go binary while still demonstrating code generation.
 
 **Why script-style top-level statements?**
-SOL has no explicit `main()` — programs run top-level statements directly. The grammar allows classes and statements at program root; LLVM codegen wraps top-level code in an implicit `@main`.
+SOL has no explicit `main()` — programs run top-level statements directly. The grammar allows
+classes and statements at program root; the TAC generator wraps top-level code in a `__program`
+block that the VM runs after loading the classes.
 
 ---
 

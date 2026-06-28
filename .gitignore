@@ -2,21 +2,13 @@
 /vscode-extension/
 /editor/
 
-# --- Compilador SOL (solc) — artefatos de build e saída ---
+# --- SOL (sollang) — artefatos de build e saída ---
 
-# Binários na raiz
+# Binário na raiz
 /sollang
-/solls
-/program
 
-# Saídas padrão do solc (ver Makefile: clean)
+# Saída padrão do -tac (ver Makefile: clean)
 output.tac
-output.ll
-
-# LLVM / clang (--build)
-*.o
-*.obj
-*.bc
 
 # --- Go ---
 

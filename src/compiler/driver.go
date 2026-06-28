@@ -22,6 +22,7 @@ const (
 	PhaseLex Phase = iota
 	PhaseParse
 	PhaseCheck
+	PhaseCompile
 	PhaseRun
 )
 
@@ -35,6 +36,7 @@ type Result struct {
 	Program  *ast.Program
 	Errors   []diag.Error
 	Analyzer *semantic.Analyzer
+	TAC      string
 	VM       *vm.VM
 	RunErr   error
 }
@@ -89,6 +91,10 @@ func RunWithOptions(src, file string, phase Phase, opts RunOptions) (*Result, er
 	}
 	gen := tac.New(sem.Classes())
 	gen.Build(prog)
+	if phase == PhaseCompile {
+		res.TAC = gen.Format()
+		return res, nil
+	}
 	machine := vm.New(gen.Instructions(), sem.Classes())
 	machine.SetScriptArgs(opts.ScriptArgs)
 	res.VM = machine

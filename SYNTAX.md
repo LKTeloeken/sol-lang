@@ -1,8 +1,8 @@
 # SOL — Referência de Sintaxe
 
-Guia prático da linguagem **SOL** (*Scripting Object Language*): tipos, keywords, operadores, OOP e como usar o compilador.
+Guia prático da linguagem **SOL** (*Scripting Object Language*): tipos, keywords, operadores, OOP e como usar o interpretador.
 
-> SOL é estaticamente tipada, orientada a objetos e executada como **script** (sem função `main`). O compilador `solc` analisa o código e a VM interpreta o TAC gerado.
+> SOL é estaticamente tipada, orientada a objetos e executada como **script** (sem função `main`). O interpretador `sollang` analisa o código e uma VM interpreta o TAC gerado.
 
 ---
 
@@ -34,7 +34,7 @@ Guia prático da linguagem **SOL** (*Scripting Object Language*): tipos, keyword
 | Herança | Simples (uma classe pai) |
 | Entrada do programa | Statements no nível raiz |
 | Extensão de arquivo | `.sol` |
-| Compilador | `solc` |
+| Interpretador | `sollang` |
 
 SOL foi pensada como oposto conceitual ao **Lua** (*Lua* = lua, *Sol* = sol): mesma ideia de linguagem de script, mas com classes, tipos explícitos e encapsulamento.
 
@@ -452,10 +452,10 @@ var r float = Math.random();
 
 ## Stdlib: `Args` (argumentos do script)
 
-Argumentos passados ao `solc` **depois** do arquivo `.sol`:
+Argumentos passados ao `sollang` **depois** do arquivo `.sol`:
 
 ```bash
-./solc --run script.sol arg1 arg2
+./sollang script.sol arg1 arg2
 ```
 
 ```sol
@@ -522,7 +522,7 @@ var obj MinhaClasse = new MinhaClasse();
 obj.metodo();
 ```
 
-Não existe `main()`. O compilador gera um bloco `__program` que executa os statements top-level após carregar as classes.
+Não existe `main()`. O gerador de TAC cria um bloco `__program` que executa os statements top-level após carregar as classes.
 
 ### Imports (`orbit`)
 
@@ -535,12 +535,12 @@ orbit "utils.sol";
 - Mescla **classes e statements** top-level do arquivo importado na posição do `orbit`.
 - Imports aninhados são suportados (`utils.sol` pode importar outros arquivos).
 - Import circular é erro de compilação.
-- `--parse` mostra o nó `orbit` no AST; `--check`, `--compile` e `--run` expandem os imports antes da análise semântica.
+- `-parse` mostra o nó `orbit` no AST; `-check`, `-tac` e a execução expandem os imports antes da análise semântica.
 
 Exemplo em `examples/modules/`:
 
 ```bash
-./solc --run examples/modules/main.sol
+./sollang examples/modules/main.sol
 ```
 
 ---
@@ -548,62 +548,58 @@ Exemplo em `examples/modules/`:
 ## Como executar
 
 ```bash
-# Compilar (gerar TAC)
-./solc --compile programa.sol
-./solc --compile programa.sol -o saida.tac
-
-# Executar (compilar + interpretar)
-./solc --run programa.sol
+# Executar (padrão: compila para TAC e interpreta)
+./sollang programa.sol
 
 # Verificar tipos sem executar
-./solc --check programa.sol
+./sollang -check programa.sol
 
-# Inspecionar fases do compilador
-./solc --lex programa.sol      # tokens
-./solc --parse programa.sol    # AST (resumo)
+# Inspecionar fases do pipeline
+./sollang -lex programa.sol      # tokens
+./sollang -parse programa.sol    # AST (resumo)
+./sollang -tac programa.sol         # código intermediário (TAC) no stdout
+./sollang -tac -o saida.tac programa.sol   # TAC em arquivo (-o antes do .sol)
 ```
 
 Exemplos incluídos no repositório:
 
 ```bash
-./solc --run examples/hello.sol
-./solc --run examples/script.sol
-./solc --run examples/conta_bancaria.sol
-./solc --run examples/heranca.sol
-./solc --run examples/for_each.sol
-./solc --run examples/for_range.sol
-./solc --run examples/simple.sol
-./solc --run examples/modules/main.sol
+./sollang examples/hello.sol
+./sollang examples/script.sol
+./sollang examples/conta_bancaria.sol
+./sollang examples/heranca.sol
+./sollang examples/for_each.sol
+./sollang examples/for_range.sol
+./sollang examples/simple.sol
+./sollang examples/modules/main.sol
 ```
 
 ---
 
 ## Logs e saída no console
 
-Use `Console.print(...)` para escrever no stdout ao executar com `./solc --run`:
+Use `Console.print(...)` para escrever no stdout ao executar:
 
 ```bash
-./solc --run examples/hello.sol
+./sollang examples/hello.sol
 # Hello, SOL
-# program finished OK
 ```
 
 | Objetivo | Comando / técnica |
 |----------|-------------------|
-| Executar script com saída | `./solc --run arquivo.sol` |
-| Binário nativo | `./solc --build arquivo.sol -o programa && ./programa` |
-| Ver tokens | `./solc --lex arquivo.sol` |
-| Ver erros de tipo | `./solc --check arquivo.sol` |
-| Ver código intermediário | `./solc --compile arquivo.sol` → `output.tac` |
-| Erros em runtime | `flare` não capturado → stderr: `solc: flare: mensagem` |
+| Executar script com saída | `./sollang arquivo.sol` |
+| Ver tokens | `./sollang -lex arquivo.sol` |
+| Ver erros de tipo | `./sollang -check arquivo.sol` |
+| Ver código intermediário (TAC) | `./sollang -tac arquivo.sol` |
+| Erros em runtime | `flare` não capturado → stderr: `sollang: flare: mensagem` |
 
 Exemplos prontos:
 
 ```bash
-./solc --run examples/hello.sol
-./solc --run examples/for_each.sol
-./solc --run examples/script.sol
-./solc --run examples/conta_bancaria.sol
+./sollang examples/hello.sol
+./sollang examples/for_each.sol
+./sollang examples/script.sol
+./sollang examples/conta_bancaria.sol
 ```
 
 ---
@@ -613,7 +609,7 @@ Exemplos prontos:
 | Recurso | Status |
 |---------|--------|
 | Lexer, parser, semântica | Implementado |
-| Execução via VM (`--run`) | Implementado |
+| Execução via VM (padrão) | Implementado |
 | OOP, herança, `flare`, `try/catch` | Implementado |
 | `Console.print` (stdlib) | Implementado |
 | `Console.readLine`, `Console.readInt` | Implementado |
@@ -622,19 +618,15 @@ Exemplos prontos:
 | `String.length`, `trim`, `split`, `contains`, `substring` | Implementado (VM) |
 | `Math.abs`, `min`, `max`, `floor`, `random` | Implementado |
 | `Args.count`, `Args.at` | Implementado |
-| Stdlib no backend nativo (`--build`) | Subconjunto; `String.split` e leitura interativa só na VM |
 | `for i in 0..10` (range) | Implementado |
 | `break`, `continue` | Implementado |
 | Concatenação de strings (`+`) | Implementado |
 | Arrays postfix `Tipo[]`, `for each`, `arr[i]`, `.length`, métodos `push`/`pop`/… | Implementado (VM) |
 | Aliases de tipo `star Nome = Tipo;` | Implementado |
 | Imports `orbit "arquivo.sol"` | Implementado |
-| Backend nativo (`--build`) | Experimental; aliases, métodos de array e `String.split` só na VM |
 | Múltipla herança | Não suportado |
 | Modificadores além de public/private | Não suportado |
 | Tipos genéricos | Não suportado |
-
-> Plano detalhado para resolver cada item acima: [`PLANO-LIMITACOES.md`](PLANO-LIMITACOES.md)
 
 ---
 
@@ -717,8 +709,7 @@ try {
 | Arquivo | Conteúdo |
 |---------|----------|
 | [`SYNTAX.md`](SYNTAX.md) | Referência de sintaxe e limitações |
-| [`PLANO-LIMITACOES.md`](PLANO-LIMITACOES.md) | Plano para implementar as limitações pendentes |
-| [`README.md`](README.md) | Build e uso do `solc` |
+| [`README.md`](README.md) | Build e uso do `sollang` |
 | [`examples/`](examples/) | Programas `.sol` de exemplo |
 
 ---

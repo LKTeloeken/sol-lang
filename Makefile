@@ -1,4 +1,4 @@
-.PHONY: build test run clean
+.PHONY: build test run tac clean
 
 build:
 	go build -o sollang ./src/main.go
@@ -6,5 +6,11 @@ build:
 test:
 	go test ./...
 
+run: build
+	./sollang examples/conta_bancaria.sol
+
+tac: build
+	./sollang -tac examples/conta_bancaria.sol
+
 clean:
-	rm -f sollang
+	rm -f sollang output.tac
