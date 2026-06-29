@@ -16,23 +16,21 @@ func TestStringConcatValues(t *testing.T) {
 }
 
 func TestArrayLength(t *testing.T) {
-	arr := Arr(Int(1), Int(2), Int(3))
 	vm := New(nil, nil)
-	vm.globals["nums"] = arr
-	v, err := vm.resolveValue("nums.length")
+	vm.globals["nums"] = Arr(Int(1), Int(2), Int(3))
+	arr, err := vm.resolveOperand(tac.Name("nums"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Int != 3 {
-		t.Fatalf("expected length 3, got %d", v.Int)
+	if arr.Kind != KindArray || len(arr.Array) != 3 {
+		t.Fatalf("expected array of length 3, got %v", arr)
 	}
 }
 
 func TestArrayIndex(t *testing.T) {
-	arr := Arr(Int(10), Int(20))
 	vm := New(nil, nil)
-	vm.globals["nums"] = arr
-	v, err := vm.resolveValue("nums[1]")
+	vm.globals["nums"] = Arr(Int(10), Int(20))
+	v, err := vm.loadIndex(tac.Name("nums"), tac.ConstInt(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,19 +40,17 @@ func TestArrayIndex(t *testing.T) {
 }
 
 func TestArrayPushWriteBack(t *testing.T) {
-	obj := Obj("Box")
-	obj.Object.Fields["items"] = Arr(Str("a"))
 	vm := New(nil, nil)
-	vm.globals["box"] = obj
+	vm.globals["items"] = Arr(Str("a"))
 
-	ins := tac.Instr{Op: tac.OpArrayCall, Arg1: "box.items", Arg2: "push", Arg3: "1"}
+	ins := tac.Instr{Op: tac.OpArrayCall, Obj: tac.Name("items"), Sym: "push", NArgs: 1}
 	vm.params = []Value{Str("b")}
 	if err := vm.doArrayCall(ins); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := vm.GetField("box", "items")
-	if err != nil {
-		t.Fatal(err)
+	updated, ok := vm.Global("items")
+	if !ok {
+		t.Fatal("items not found")
 	}
 	if len(updated.Array) != 2 || updated.Array[1].StrVal != "b" {
 		t.Fatalf("expected [a b], got %v", updated.Array)

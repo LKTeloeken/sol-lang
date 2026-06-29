@@ -11,25 +11,112 @@ import (
 	"github.com/unisc/compiladores/sol/src/token"
 )
 
+// ── Operands ────────────────────────────────────────────────────────────────
+//
+// A TAC operand is one of three things, distinguished by its kind:
+//   - a constant literal (int/float/bool/string/null),
+//   - a name (temporary or variable), or
+//   - the pending result of the most recent call.
+//
+// Encoding operands as a typed value (instead of a raw string) means the VM
+// never has to re-parse text at runtime to decide whether something is a
+// literal, a variable, a field access or an array index.
+
+type OperandKind int
+
+const (
+	OpndNone       OperandKind = iota // empty operand (e.g. a bare `return`)
+	OpndConst                         // a literal value
+	OpndName                          // a temporary or variable name
+	OpndCallResult                    // the return value of the last call
+)
+
+// LitKind is the type of a constant operand.
+type LitKind int
+
+const (
+	LitNull LitKind = iota
+	LitInt
+	LitFloat
+	LitBool
+	LitStr
+)
+
+// Operand is a typed three-address-code operand.
+type Operand struct {
+	Kind  OperandKind
+	Lit   LitKind // valid when Kind == OpndConst
+	Int   int64
+	Float float64
+	Bool  bool
+	Str   string
+	Name  string // valid when Kind == OpndName
+}
+
+func ConstInt(v int64) Operand     { return Operand{Kind: OpndConst, Lit: LitInt, Int: v} }
+func ConstFloat(v float64) Operand { return Operand{Kind: OpndConst, Lit: LitFloat, Float: v} }
+func ConstBool(v bool) Operand     { return Operand{Kind: OpndConst, Lit: LitBool, Bool: v} }
+func ConstStr(v string) Operand    { return Operand{Kind: OpndConst, Lit: LitStr, Str: v} }
+func ConstNull() Operand           { return Operand{Kind: OpndConst, Lit: LitNull} }
+func Name(n string) Operand        { return Operand{Kind: OpndName, Name: n} }
+func CallResult() Operand          { return Operand{Kind: OpndCallResult} }
+
+// IsZero reports whether the operand is unset (used to detect a bare `return`).
+func (o Operand) IsZero() bool { return o.Kind == OpndNone }
+
+func (o Operand) String() string {
+	switch o.Kind {
+	case OpndConst:
+		switch o.Lit {
+		case LitNull:
+			return "null"
+		case LitInt:
+			return fmt.Sprintf("%d", o.Int)
+		case LitFloat:
+			return fmt.Sprintf("%g", o.Float)
+		case LitBool:
+			if o.Bool {
+				return "true"
+			}
+			return "false"
+		case LitStr:
+			return fmt.Sprintf("%q", o.Str)
+		}
+	case OpndName:
+		return o.Name
+	case OpndCallResult:
+		return "call_result"
+	}
+	return "_"
+}
+
+// ── Instructions ────────────────────────────────────────────────────────────
+
 type Op string
 
 const (
-	OpAssign   Op = "assign"
-	OpBinOp    Op = "binop"
-	OpLabel    Op = "label"
-	OpGoto     Op = "goto"
-	OpIfFalse  Op = "ifFalse"
-	OpParam    Op = "param"
-	OpCall     Op = "call"
-	OpThrow    Op = "throw"
-	OpNew      Op = "new"
-	OpReturn   Op = "return"
-	OpComment  Op = "comment"
-	OpBeginTry Op = "beginTry"
-	OpEndTry   Op = "endTry"
-	OpBuiltin  Op = "builtin"
+	OpAssign    Op = "assign"
+	OpBinOp     Op = "binop"
+	OpUnary     Op = "unary"
+	OpLabel     Op = "label"
+	OpGoto      Op = "goto"
+	OpIfFalse   Op = "ifFalse"
+	OpParam     Op = "param"
+	OpCall      Op = "call"
+	OpThrow     Op = "throw"
+	OpNew       Op = "new"
+	OpReturn    Op = "return"
+	OpComment   Op = "comment"
+	OpBeginTry  Op = "beginTry"
+	OpEndTry    Op = "endTry"
+	OpBuiltin   Op = "builtin"
 	OpArrayLit  Op = "arrayLit"
 	OpArrayCall Op = "arrayCall"
+	OpFieldGet  Op = "fieldGet"
+	OpFieldSet  Op = "fieldSet"
+	OpIndexGet  Op = "indexGet"
+	OpIndexSet  Op = "indexSet"
+	OpLen       Op = "len"
 )
 
 type loopContext struct {
@@ -37,14 +124,20 @@ type loopContext struct {
 	continueLabel string
 }
 
+// Instr is a single three-address-code instruction. Only the fields relevant to
+// each Op are populated (see Generator for which fields each op uses).
 type Instr struct {
 	Op       Op
-	Result   string
-	Arg1     string
-	Arg2     string
-	Arg3     string
-	Operator string
-	Label    string
+	Dst      string  // destination temp/variable name (value-producing ops)
+	A        Operand // first input operand
+	B        Operand // second input operand (binops)
+	Obj      Operand // object/array receiver (field/index/array-method ops)
+	Idx      Operand // index operand (index ops)
+	Field    string  // field name (field get/set)
+	Operator string  // operator symbol (binop/unary)
+	Sym      string  // label / class / method / builtin id / catch var
+	Label    string  // jump target label
+	NArgs    int     // argument count (call/builtin/arrayLit/arrayCall)
 	Comment  string
 }
 
@@ -52,52 +145,66 @@ func (i Instr) String() string {
 	switch i.Op {
 	case OpAssign:
 		if i.Comment != "" {
-			return fmt.Sprintf("%s = %s  ; %s", i.Result, i.Arg1, i.Comment)
+			return fmt.Sprintf("%s = %s  ; %s", i.Dst, i.A, i.Comment)
 		}
-		return fmt.Sprintf("%s = %s", i.Result, i.Arg1)
+		return fmt.Sprintf("%s = %s", i.Dst, i.A)
 	case OpBinOp:
-		return fmt.Sprintf("%s = %s %s %s", i.Result, i.Arg1, i.Operator, i.Arg2)
+		return fmt.Sprintf("%s = %s %s %s", i.Dst, i.A, i.Operator, i.B)
+	case OpUnary:
+		return fmt.Sprintf("%s = %s%s", i.Dst, i.Operator, i.A)
+	case OpFieldGet:
+		return fmt.Sprintf("%s = %s.%s", i.Dst, i.Obj, i.Field)
+	case OpFieldSet:
+		return fmt.Sprintf("%s.%s = %s", i.Obj, i.Field, i.A)
+	case OpIndexGet:
+		return fmt.Sprintf("%s = %s[%s]", i.Dst, i.Obj, i.Idx)
+	case OpIndexSet:
+		return fmt.Sprintf("%s[%s] = %s", i.Obj, i.Idx, i.A)
+	case OpLen:
+		return fmt.Sprintf("%s = len(%s)", i.Dst, i.Obj)
 	case OpLabel:
 		return fmt.Sprintf("%s:", i.Label)
 	case OpGoto:
 		return fmt.Sprintf("goto %s", i.Label)
 	case OpIfFalse:
-		return fmt.Sprintf("ifFalse %s goto %s", i.Arg1, i.Label)
+		return fmt.Sprintf("ifFalse %s goto %s", i.A, i.Label)
 	case OpParam:
-		return fmt.Sprintf("param %s", i.Arg1)
+		return fmt.Sprintf("param %s", i.A)
 	case OpCall:
-		return fmt.Sprintf("call %s, %s", i.Arg1, i.Arg2)
+		return fmt.Sprintf("call %s, %d", i.Sym, i.NArgs)
 	case OpThrow:
-		return fmt.Sprintf("throw %s", i.Arg1)
+		return fmt.Sprintf("throw %s", i.A)
 	case OpNew:
-		return fmt.Sprintf("%s = new %s", i.Result, i.Arg1)
+		return fmt.Sprintf("%s = new %s", i.Dst, i.Sym)
 	case OpReturn:
-		if i.Arg1 != "" {
-			return fmt.Sprintf("return %s", i.Arg1)
+		if !i.A.IsZero() {
+			return fmt.Sprintf("return %s", i.A)
 		}
 		return "return"
 	case OpComment:
 		return "; " + i.Comment
 	case OpBeginTry:
-		return fmt.Sprintf("beginTry %s %s", i.Label, i.Arg1)
+		return fmt.Sprintf("beginTry %s %s", i.Label, i.Sym)
 	case OpEndTry:
 		return fmt.Sprintf("endTry %s", i.Label)
 	case OpBuiltin:
-		if i.Result != "" {
-			return fmt.Sprintf("%s = builtin %s %s", i.Result, i.Arg1, i.Arg2)
+		if i.Dst != "" {
+			return fmt.Sprintf("%s = builtin %s %d", i.Dst, i.Sym, i.NArgs)
 		}
-		return fmt.Sprintf("builtin %s %s", i.Arg1, i.Arg2)
+		return fmt.Sprintf("builtin %s %d", i.Sym, i.NArgs)
 	case OpArrayLit:
-		return fmt.Sprintf("%s = arrayLit %s", i.Result, i.Arg2)
+		return fmt.Sprintf("%s = arrayLit %d", i.Dst, i.NArgs)
 	case OpArrayCall:
-		if i.Result != "" {
-			return fmt.Sprintf("%s = arrayCall %s %s %s", i.Result, i.Arg1, i.Arg2, i.Arg3)
+		if i.Dst != "" {
+			return fmt.Sprintf("%s = arrayCall %s %s %d", i.Dst, i.Obj, i.Sym, i.NArgs)
 		}
-		return fmt.Sprintf("arrayCall %s %s %s", i.Arg1, i.Arg2, i.Arg3)
+		return fmt.Sprintf("arrayCall %s %s %d", i.Obj, i.Sym, i.NArgs)
 	default:
 		return fmt.Sprintf("; unknown op %s", i.Op)
 	}
 }
+
+// ── Generator ───────────────────────────────────────────────────────────────
 
 type Generator struct {
 	instrs    []Instr
@@ -217,8 +324,7 @@ func (g *Generator) genStmt(s ast.Stmt) {
 		g.genForRange(st)
 	case *ast.EmitStmt:
 		if st.Value != nil {
-			v := g.genExpr(st.Value)
-			g.emit(Instr{Op: OpReturn, Arg1: v})
+			g.emit(Instr{Op: OpReturn, A: g.genExpr(st.Value)})
 		} else {
 			g.emit(Instr{Op: OpReturn})
 		}
@@ -241,15 +347,23 @@ func (g *Generator) genStmt(s ast.Stmt) {
 
 func (g *Generator) genVarDecl(v *ast.VarDeclStmt) {
 	if v.Value != nil {
-		val := g.genExpr(v.Value)
-		g.emit(Instr{Op: OpAssign, Result: v.Name, Arg1: val})
+		g.emit(Instr{Op: OpAssign, Dst: v.Name, A: g.genExpr(v.Value)})
 	}
 }
 
 func (g *Generator) genAssign(s *ast.AssignStmt) {
 	val := g.genExpr(s.Value)
-	target := g.genLValue(s.Target)
-	g.emit(Instr{Op: OpAssign, Result: target, Arg1: val})
+	switch t := s.Target.(type) {
+	case *ast.IdentExpr:
+		g.emit(Instr{Op: OpAssign, Dst: t.Name, A: val})
+	case *ast.GetFieldExpr:
+		obj := g.genExpr(t.Object)
+		g.emit(Instr{Op: OpFieldSet, Obj: obj, Field: t.Field, A: val})
+	case *ast.IndexExpr:
+		obj := g.genExpr(t.Object)
+		idx := g.genExpr(t.Index)
+		g.emit(Instr{Op: OpIndexSet, Obj: obj, Idx: idx, A: val})
+	}
 }
 
 func (g *Generator) genIf(s *ast.IfStmt) {
@@ -259,7 +373,7 @@ func (g *Generator) genIf(s *ast.IfStmt) {
 	if s.Else == nil {
 		endLabel = elseLabel
 	}
-	g.emit(Instr{Op: OpIfFalse, Arg1: cond, Label: elseLabel})
+	g.emit(Instr{Op: OpIfFalse, A: cond, Label: elseLabel})
 	for _, st := range s.Then.Stmts {
 		g.genStmt(st)
 	}
@@ -303,7 +417,7 @@ func (g *Generator) genWhile(s *ast.WhileStmt) {
 	g.pushLoop(end, start)
 	g.emit(Instr{Op: OpLabel, Label: start})
 	cond := g.genExpr(s.Cond)
-	g.emit(Instr{Op: OpIfFalse, Arg1: cond, Label: end})
+	g.emit(Instr{Op: OpIfFalse, A: cond, Label: end})
 	for _, st := range s.Body.Stmts {
 		g.genStmt(st)
 	}
@@ -316,62 +430,61 @@ func (g *Generator) genForEach(s *ast.ForEachStmt) {
 	arr := g.genExpr(s.Iter)
 	idx := g.freshTemp()
 	lenTmp := g.freshTemp()
-	g.emit(Instr{Op: OpAssign, Result: idx, Arg1: "0", Comment: "for each index"})
+	g.emit(Instr{Op: OpAssign, Dst: idx, A: ConstInt(0), Comment: "for each index"})
 	loopStart := g.freshLabel()
 	loopEnd := g.freshLabel()
 	contLabel := g.freshLabel()
 	g.pushLoop(loopEnd, contLabel)
 	g.emit(Instr{Op: OpLabel, Label: loopStart})
-	g.emit(Instr{Op: OpAssign, Result: lenTmp, Arg1: arr + ".length", Comment: "array length"})
+	g.emit(Instr{Op: OpLen, Dst: lenTmp, Obj: arr, Comment: "array length"})
 	lt := g.freshTemp()
-	g.emit(Instr{Op: OpBinOp, Result: lt, Arg1: idx, Operator: "<", Arg2: lenTmp})
-	g.emit(Instr{Op: OpIfFalse, Arg1: lt, Label: loopEnd})
-	g.emit(Instr{Op: OpAssign, Result: s.VarName, Arg1: arr + "[" + idx + "]", Comment: "for each elem"})
+	g.emit(Instr{Op: OpBinOp, Dst: lt, A: Name(idx), Operator: "<", B: Name(lenTmp)})
+	g.emit(Instr{Op: OpIfFalse, A: Name(lt), Label: loopEnd})
+	g.emit(Instr{Op: OpIndexGet, Dst: s.VarName, Obj: arr, Idx: Name(idx), Comment: "for each elem"})
 	for _, st := range s.Body.Stmts {
 		g.genStmt(st)
 	}
 	g.emit(Instr{Op: OpLabel, Label: contLabel})
 	inc := g.freshTemp()
-	g.emit(Instr{Op: OpBinOp, Result: inc, Arg1: idx, Operator: "+", Arg2: "1"})
-	g.emit(Instr{Op: OpAssign, Result: idx, Arg1: inc})
+	g.emit(Instr{Op: OpBinOp, Dst: inc, A: Name(idx), Operator: "+", B: ConstInt(1)})
+	g.emit(Instr{Op: OpAssign, Dst: idx, A: Name(inc)})
 	g.emit(Instr{Op: OpGoto, Label: loopStart})
-	g.emit(Instr{Op: OpLabel, Label: loopEnd, Comment: "end for each " + arr})
+	g.emit(Instr{Op: OpLabel, Label: loopEnd, Comment: "end for each"})
 	g.popLoop()
 }
 
 func (g *Generator) genForRange(s *ast.ForRangeStmt) {
 	startVal := g.genExpr(s.Start)
 	endVal := g.genExpr(s.End)
-	g.emit(Instr{Op: OpAssign, Result: s.VarName, Arg1: startVal, Comment: "for range init"})
+	g.emit(Instr{Op: OpAssign, Dst: s.VarName, A: startVal, Comment: "for range init"})
 	loopStart := g.freshLabel()
 	loopEnd := g.freshLabel()
 	contLabel := g.freshLabel()
 	g.pushLoop(loopEnd, contLabel)
 	g.emit(Instr{Op: OpLabel, Label: loopStart})
 	lt := g.freshTemp()
-	g.emit(Instr{Op: OpBinOp, Result: lt, Arg1: s.VarName, Operator: "<", Arg2: endVal})
-	g.emit(Instr{Op: OpIfFalse, Arg1: lt, Label: loopEnd})
+	g.emit(Instr{Op: OpBinOp, Dst: lt, A: Name(s.VarName), Operator: "<", B: endVal})
+	g.emit(Instr{Op: OpIfFalse, A: Name(lt), Label: loopEnd})
 	for _, st := range s.Body.Stmts {
 		g.genStmt(st)
 	}
 	g.emit(Instr{Op: OpLabel, Label: contLabel})
 	inc := g.freshTemp()
-	g.emit(Instr{Op: OpBinOp, Result: inc, Arg1: s.VarName, Operator: "+", Arg2: "1"})
-	g.emit(Instr{Op: OpAssign, Result: s.VarName, Arg1: inc})
+	g.emit(Instr{Op: OpBinOp, Dst: inc, A: Name(s.VarName), Operator: "+", B: ConstInt(1)})
+	g.emit(Instr{Op: OpAssign, Dst: s.VarName, A: Name(inc)})
 	g.emit(Instr{Op: OpGoto, Label: loopStart})
 	g.emit(Instr{Op: OpLabel, Label: loopEnd, Comment: "end for range"})
 	g.popLoop()
 }
 
 func (g *Generator) genFlare(s *ast.FlareStmt) {
-	val := g.genExpr(s.Value)
-	g.emit(Instr{Op: OpThrow, Arg1: val})
+	g.emit(Instr{Op: OpThrow, A: g.genExpr(s.Value)})
 }
 
 func (g *Generator) genTryCatch(s *ast.TryCatchStmt) {
 	catchLabel := g.freshLabel()
 	endLabel := g.freshLabel()
-	g.emit(Instr{Op: OpBeginTry, Label: catchLabel, Arg1: s.CatchVar})
+	g.emit(Instr{Op: OpBeginTry, Label: catchLabel, Sym: s.CatchVar})
 	for _, st := range s.Try.Stmts {
 		g.genStmt(st)
 	}
@@ -383,57 +496,67 @@ func (g *Generator) genTryCatch(s *ast.TryCatchStmt) {
 	g.emit(Instr{Op: OpLabel, Label: endLabel})
 }
 
-func (g *Generator) genExpr(e ast.Expr) string {
+// genExpr lowers an expression, emitting any necessary instructions, and returns
+// the operand that holds its value.
+func (g *Generator) genExpr(e ast.Expr) Operand {
 	switch ex := e.(type) {
 	case *ast.IntLit:
-		return fmt.Sprintf("%d", ex.Value)
+		return ConstInt(ex.Value)
 	case *ast.FloatLit:
-		return fmt.Sprintf("%g", ex.Value)
+		return ConstFloat(ex.Value)
 	case *ast.StringLit:
-		return fmt.Sprintf("%q", ex.Value)
+		return ConstStr(ex.Value)
 	case *ast.BoolLit:
-		if ex.Value {
-			return "true"
-		}
-		return "false"
+		return ConstBool(ex.Value)
 	case *ast.NullLit:
-		return "null"
+		return ConstNull()
 	case *ast.IdentExpr:
-		return ex.Name
+		return Name(ex.Name)
 	case *ast.ThisExpr:
-		return "this"
+		return Name("this")
 	case *ast.RadiateExpr:
-		return "radiate"
+		return Name("radiate")
+	case *ast.ParenExpr:
+		return g.genExpr(ex.Inner)
 	case *ast.BinaryExpr:
+		a := g.genExpr(ex.Left)
+		b := g.genExpr(ex.Right)
 		t := g.freshTemp()
-		op := tokenOp(ex.Operator)
-		g.emit(Instr{Op: OpBinOp, Result: t, Arg1: g.genExpr(ex.Left), Operator: op, Arg2: g.genExpr(ex.Right)})
-		return t
+		g.emit(Instr{Op: OpBinOp, Dst: t, A: a, Operator: tokenOp(ex.Operator), B: b})
+		return Name(t)
 	case *ast.UnaryExpr:
-		t := g.freshTemp()
+		a := g.genExpr(ex.Operand)
+		op := "-"
 		if ex.Operator == token.BANG {
-			g.emit(Instr{Op: OpBinOp, Result: t, Arg1: "!", Operator: "", Arg2: g.genExpr(ex.Operand)})
-		} else {
-			g.emit(Instr{Op: OpBinOp, Result: t, Arg1: "-", Operator: "", Arg2: g.genExpr(ex.Operand)})
+			op = "!"
 		}
-		return t
+		t := g.freshTemp()
+		g.emit(Instr{Op: OpUnary, Dst: t, Operator: op, A: a})
+		return Name(t)
 	case *ast.CallExpr:
 		return g.genCall(ex)
 	case *ast.NewExpr:
 		t := g.freshTemp()
-		g.emit(Instr{Op: OpNew, Result: t, Arg1: ex.ClassName})
-		g.emit(Instr{Op: OpParam, Arg1: t})
+		g.emit(Instr{Op: OpNew, Dst: t, Sym: ex.ClassName})
+		g.emit(Instr{Op: OpParam, A: Name(t)})
 		for _, arg := range ex.Args {
-			g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+			g.emit(Instr{Op: OpParam, A: g.genExpr(arg)})
 		}
-		g.emit(Instr{Op: OpCall, Arg1: ex.ClassName + ".glow", Arg2: fmt.Sprintf("%d", 1+len(ex.Args))})
-		return t
+		g.emit(Instr{Op: OpCall, Sym: ex.ClassName + ".glow", NArgs: 1 + len(ex.Args)})
+		return Name(t)
 	case *ast.GetFieldExpr:
-		return g.genField(ex)
+		obj := g.genExpr(ex.Object)
+		t := g.freshTemp()
+		if ot := ex.Object.GetType(); ot != nil && ot.IsArray && ex.Field == "length" {
+			g.emit(Instr{Op: OpLen, Dst: t, Obj: obj})
+		} else {
+			g.emit(Instr{Op: OpFieldGet, Dst: t, Obj: obj, Field: ex.Field})
+		}
+		return Name(t)
 	case *ast.SuperCallExpr:
-		g.emit(Instr{Op: OpParam, Arg1: "this"})
+		g.emit(Instr{Op: OpParam, A: Name("this")})
 		for _, arg := range ex.Args {
-			g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
+			g.emit(Instr{Op: OpParam, A: g.genExpr(arg)})
 		}
 		superClass := ""
 		if g.curClass != "" {
@@ -441,97 +564,116 @@ func (g *Generator) genExpr(e ast.Expr) string {
 				superClass = ci.SuperName
 			}
 		}
-		g.emit(Instr{Op: OpCall, Arg1: superClass + "." + ex.Method, Arg2: fmt.Sprintf("%d", 1+len(ex.Args))})
+		g.emit(Instr{Op: OpCall, Sym: superClass + "." + ex.Method, NArgs: 1 + len(ex.Args)})
 		t := g.freshTemp()
-		g.emit(Instr{Op: OpAssign, Result: t, Arg1: "call_result", Comment: "super " + ex.Method})
-		return t
-	case *ast.ParenExpr:
-		return g.genExpr(ex.Inner)
+		g.emit(Instr{Op: OpAssign, Dst: t, A: CallResult(), Comment: "super " + ex.Method})
+		return Name(t)
 	case *ast.ArrayLitExpr:
-		t := g.freshTemp()
 		for _, el := range ex.Elements {
-			g.emit(Instr{Op: OpParam, Arg1: g.genExpr(el)})
+			g.emit(Instr{Op: OpParam, A: g.genExpr(el)})
 		}
-		g.emit(Instr{Op: OpArrayLit, Result: t, Arg2: fmt.Sprintf("%d", len(ex.Elements))})
-		return t
+		t := g.freshTemp()
+		g.emit(Instr{Op: OpArrayLit, Dst: t, NArgs: len(ex.Elements)})
+		return Name(t)
 	case *ast.IndexExpr:
 		obj := g.genExpr(ex.Object)
 		idx := g.genExpr(ex.Index)
-		return obj + "[" + idx + "]"
-	default:
-		return g.freshTemp()
-	}
-}
-
-func (g *Generator) genCall(c *ast.CallExpr) string {
-	if gf, ok := c.Callee.(*ast.GetFieldExpr); ok {
-		if id, ok := gf.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
-			if _, ok := stdlib.Lookup(id.Name, gf.Field); ok {
-				for _, arg := range c.Args {
-					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
-				}
-				idStr := stdlib.BuiltinID(id.Name, gf.Field)
-				ins := Instr{Op: OpBuiltin, Arg1: idStr, Arg2: fmt.Sprintf("%d", len(c.Args))}
-				if stdlib.ReturnsVoid(id.Name, gf.Field) {
-					g.emit(ins)
-					return ""
-				}
-				t := g.freshTemp()
-				ins.Result = t
-				g.emit(ins)
-				return t
-			}
-		}
-		if m, ok := arraymethods.Lookup(gf.Field); ok {
-			objType := gf.Object.GetType()
-			if objType != nil && objType.IsArray {
-				lval := g.genLValue(gf.Object)
-				for _, arg := range c.Args {
-					g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
-				}
-				ins := Instr{Op: OpArrayCall, Arg1: lval, Arg2: gf.Field, Arg3: fmt.Sprintf("%d", len(c.Args))}
-				if m.ReturnType == "void" {
-					g.emit(ins)
-					return ""
-				}
-				t := g.freshTemp()
-				ins.Result = t
-				g.emit(ins)
-				return t
-			}
-		}
-		receiver := g.genExpr(gf.Object)
-		g.emit(Instr{Op: OpParam, Arg1: receiver})
-		for _, arg := range c.Args {
-			g.emit(Instr{Op: OpParam, Arg1: g.genExpr(arg)})
-		}
-		className := g.resolveMethodClass(gf.Object, gf.Field)
-		nArgs := 1 + len(c.Args)
-		g.emit(Instr{Op: OpCall, Arg1: className + "." + gf.Field, Arg2: fmt.Sprintf("%d", nArgs)})
 		t := g.freshTemp()
-		g.emit(Instr{Op: OpAssign, Result: t, Arg1: "call_result", Comment: receiver + "." + gf.Field})
-		return t
+		g.emit(Instr{Op: OpIndexGet, Dst: t, Obj: obj, Idx: idx})
+		return Name(t)
+	default:
+		return Name(g.freshTemp())
 	}
-	return g.freshTemp()
 }
 
-func (g *Generator) genField(f *ast.GetFieldExpr) string {
-	obj := g.genExpr(f.Object)
-	return obj + "." + f.Field
+func (g *Generator) genCall(c *ast.CallExpr) Operand {
+	gf, ok := c.Callee.(*ast.GetFieldExpr)
+	if !ok {
+		return Name(g.freshTemp())
+	}
+
+	// Static stdlib builtin, e.g. Console.print(...)
+	if id, ok := gf.Object.(*ast.IdentExpr); ok && stdlib.IsBuiltin(id.Name) {
+		if _, ok := stdlib.Lookup(id.Name, gf.Field); ok {
+			for _, arg := range c.Args {
+				g.emit(Instr{Op: OpParam, A: g.genExpr(arg)})
+			}
+			ins := Instr{Op: OpBuiltin, Sym: stdlib.BuiltinID(id.Name, gf.Field), NArgs: len(c.Args)}
+			if stdlib.ReturnsVoid(id.Name, gf.Field) {
+				g.emit(ins)
+				return Operand{}
+			}
+			t := g.freshTemp()
+			ins.Dst = t
+			g.emit(ins)
+			return Name(t)
+		}
+	}
+
+	// Array method, e.g. arr.push(x)
+	if m, ok := arraymethods.Lookup(gf.Field); ok {
+		if ot := gf.Object.GetType(); ot != nil && ot.IsArray {
+			recv, writeback := g.genArrayReceiver(gf.Object)
+			for _, arg := range c.Args {
+				g.emit(Instr{Op: OpParam, A: g.genExpr(arg)})
+			}
+			ins := Instr{Op: OpArrayCall, Obj: Name(recv), Sym: gf.Field, NArgs: len(c.Args)}
+			var ret Operand
+			if m.ReturnType == "void" {
+				g.emit(ins)
+			} else {
+				d := g.freshTemp()
+				ins.Dst = d
+				g.emit(ins)
+				ret = Name(d)
+			}
+			if writeback != nil {
+				writeback()
+			}
+			return ret
+		}
+	}
+
+	// User-defined method, e.g. obj.method(args)
+	receiver := g.genExpr(gf.Object)
+	g.emit(Instr{Op: OpParam, A: receiver})
+	for _, arg := range c.Args {
+		g.emit(Instr{Op: OpParam, A: g.genExpr(arg)})
+	}
+	className := g.resolveMethodClass(gf.Object, gf.Field)
+	g.emit(Instr{Op: OpCall, Sym: className + "." + gf.Field, NArgs: 1 + len(c.Args)})
+	t := g.freshTemp()
+	g.emit(Instr{Op: OpAssign, Dst: t, A: CallResult(), Comment: gf.Field})
+	return Name(t)
 }
 
-func (g *Generator) genLValue(e ast.Expr) string {
+// genArrayReceiver loads an array l-value into an addressable name. For a plain
+// variable the name is returned directly; for a field or index access the array
+// is loaded into a temporary and a write-back closure stores it back after a
+// mutating array method runs.
+func (g *Generator) genArrayReceiver(e ast.Expr) (string, func()) {
 	switch ex := e.(type) {
 	case *ast.IdentExpr:
-		return ex.Name
+		return ex.Name, nil
 	case *ast.GetFieldExpr:
-		return g.genField(ex)
+		obj := g.genExpr(ex.Object)
+		t := g.freshTemp()
+		g.emit(Instr{Op: OpFieldGet, Dst: t, Obj: obj, Field: ex.Field})
+		return t, func() { g.emit(Instr{Op: OpFieldSet, Obj: obj, Field: ex.Field, A: Name(t)}) }
 	case *ast.IndexExpr:
 		obj := g.genExpr(ex.Object)
 		idx := g.genExpr(ex.Index)
-		return obj + "[" + idx + "]"
+		t := g.freshTemp()
+		g.emit(Instr{Op: OpIndexGet, Dst: t, Obj: obj, Idx: idx})
+		return t, func() { g.emit(Instr{Op: OpIndexSet, Obj: obj, Idx: idx, A: Name(t)}) }
 	default:
-		return g.freshTemp()
+		v := g.genExpr(e)
+		if v.Kind == OpndName {
+			return v.Name, nil
+		}
+		t := g.freshTemp()
+		g.emit(Instr{Op: OpAssign, Dst: t, A: v})
+		return t, nil
 	}
 }
 

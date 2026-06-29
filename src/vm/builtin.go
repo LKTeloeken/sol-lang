@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,15 +19,12 @@ func (vm *VM) SetScriptArgs(args []string) {
 }
 
 func (vm *VM) doBuiltin(ins tac.Instr) error {
-	n, _ := strconv.Atoi(ins.Arg2)
-	val, err := vm.dispatchBuiltin(ins.Arg1, n)
+	val, err := vm.dispatchBuiltin(ins.Sym, ins.NArgs)
 	if err != nil {
 		return err
 	}
-	if ins.Result != "" {
-		if err := vm.store(ins.Result, val); err != nil {
-			return err
-		}
+	if ins.Dst != "" {
+		vm.storeName(ins.Dst, val)
 	}
 	return nil
 }

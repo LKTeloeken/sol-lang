@@ -2,21 +2,20 @@ package vm
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/unisc/compiladores/sol/src/arraymethods"
 	"github.com/unisc/compiladores/sol/src/tac"
 )
 
 func (vm *VM) doArrayCall(ins tac.Instr) error {
-	n, _ := strconv.Atoi(ins.Arg3)
+	n := ins.NArgs
 	if n > len(vm.params) {
 		return fmt.Errorf("arrayCall: expected %d params, got %d", n, len(vm.params))
 	}
 	args := vm.params[len(vm.params)-n:]
 	vm.params = vm.params[:len(vm.params)-n]
 
-	arrVal, err := vm.resolveValue(ins.Arg1)
+	arrVal, err := vm.resolveOperand(ins.Obj)
 	if err != nil {
 		return err
 	}
@@ -24,15 +23,16 @@ func (vm *VM) doArrayCall(ins tac.Instr) error {
 		return fmt.Errorf("arrayCall: receiver is not an array")
 	}
 
-	m, ok := arraymethods.Lookup(ins.Arg2)
+	method := ins.Sym
+	m, ok := arraymethods.Lookup(method)
 	if !ok {
-		return fmt.Errorf("arrayCall: unknown method %q", ins.Arg2)
+		return fmt.Errorf("arrayCall: unknown method %q", method)
 	}
 
 	items := append([]Value(nil), arrVal.Array...)
 	var result Value
 
-	switch ins.Arg2 {
+	switch method {
 	case "push":
 		if len(args) != 1 {
 			return fmt.Errorf("arrayCall push: expected 1 argument")
@@ -81,20 +81,22 @@ func (vm *VM) doArrayCall(ins tac.Instr) error {
 	case "isEmpty":
 		result = Bool(len(items) == 0)
 	default:
-		return fmt.Errorf("arrayCall: unimplemented method %q", ins.Arg2)
+		return fmt.Errorf("arrayCall: unimplemented method %q", method)
 	}
 
+	// Mutating methods write the new array back to the receiver name. The
+	// generator guarantees the receiver is always a plain name (a variable or a
+	// temporary), so the write-back is a simple assignment with no string parsing.
 	if m.Mutates {
-		if err := vm.store(ins.Arg1, Arr(items...)); err != nil {
-			return err
-		}
+		vm.storeName(ins.Obj.Name, Arr(items...))
 	}
 
-	if ins.Result != "" {
+	if ins.Dst != "" {
 		if m.ReturnType == "void" {
-			return vm.store(ins.Result, Null())
+			vm.storeName(ins.Dst, Null())
+		} else {
+			vm.storeName(ins.Dst, result)
 		}
-		return vm.store(ins.Result, result)
 	}
 	return nil
 }

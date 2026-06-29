@@ -688,6 +688,15 @@ conversion (`src/parser/convert.go`).
 **Why TAC as the final output?**
 Three-Address Code is the standard intermediate representation taught in compilers courses. It is human-readable, easy to verify manually, and close enough to assembly to demonstrate code generation concepts without requiring a full machine code backend.
 
+**Why typed operands and explicit field/index instructions?**
+Each TAC operand is a typed value — a constant or a name (temporary/variable) — rather than a raw
+string, and composite accesses (`obj.f`, `a[i]`, array length) are their own instructions
+(`fieldGet`/`fieldSet`/`indexGet`/`indexSet`/`len`). This keeps the IR unambiguous and lets the VM
+execute each instruction by a direct lookup/assignment instead of re-parsing operand text at
+runtime. An earlier version encoded these as strings (`"obj.f"`, `"a[i]"`) that the VM split back
+apart — convenient to emit, but fragile and not proper three-address code; the explicit form is the
+textbook representation and makes both the generator and the VM simpler.
+
 **Why single inheritance only?**
 Multiple inheritance introduces diamond-problem complexity that is out of scope for a compiler course project. The `radiate` keyword enforces exactly one parent class, keeping the class hierarchy simple and the semantic analysis tractable.
 

@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // Kind identifies a runtime value type.
@@ -35,11 +34,11 @@ type Object struct {
 	Fields map[string]Value
 }
 
-func Null() Value              { return Value{Kind: KindNull} }
-func Int(v int64) Value        { return Value{Kind: KindInt, Int: v} }
-func Float(v float64) Value    { return Value{Kind: KindFloat, Float: v} }
-func Bool(v bool) Value        { return Value{Kind: KindBool, Bool: v} }
-func Str(v string) Value       { return Value{Kind: KindString, StrVal: v} }
+func Null() Value           { return Value{Kind: KindNull} }
+func Int(v int64) Value     { return Value{Kind: KindInt, Int: v} }
+func Float(v float64) Value { return Value{Kind: KindFloat, Float: v} }
+func Bool(v bool) Value     { return Value{Kind: KindBool, Bool: v} }
+func Str(v string) Value    { return Value{Kind: KindString, StrVal: v} }
 func Obj(class string) Value {
 	return Value{Kind: KindObject, Object: &Object{Class: class, Fields: make(map[string]Value)}}
 }
@@ -100,34 +99,4 @@ func (v Value) String() string {
 	default:
 		return "?"
 	}
-}
-
-func parseLiteral(s string) (Value, error) {
-	s = strings.TrimSpace(s)
-	if s == "null" {
-		return Null(), nil
-	}
-	if s == "true" {
-		return Bool(true), nil
-	}
-	if s == "false" {
-		return Bool(false), nil
-	}
-	if strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) {
-		unq, err := strconv.Unquote(s)
-		if err != nil {
-			return Null(), err
-		}
-		return Str(unq), nil
-	}
-	if strings.Contains(s, ".") {
-		f, err := strconv.ParseFloat(s, 64)
-		if err == nil {
-			return Float(f), nil
-		}
-	}
-	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return Int(i), nil
-	}
-	return Null(), fmt.Errorf("invalid literal %q", s)
 }

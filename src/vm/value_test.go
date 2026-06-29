@@ -2,13 +2,29 @@ package vm
 
 import "testing"
 
-func TestParseLiteral(t *testing.T) {
-	v, err := parseLiteral(`"hello"`)
-	if err != nil || v.StrVal != "hello" {
-		t.Fatalf("got %v err %v", v, err)
+func TestValueString(t *testing.T) {
+	cases := []struct {
+		v    Value
+		want string
+	}{
+		{Int(42), "42"},
+		{Float(3.5), "3.5"},
+		{Bool(true), "true"},
+		{Str("hi"), "hi"},
+		{Null(), "null"},
 	}
-	v, err = parseLiteral("42")
-	if err != nil || v.Int != 42 {
-		t.Fatalf("got %v err %v", v, err)
+	for _, c := range cases {
+		if got := c.v.String(); got != c.want {
+			t.Errorf("String() = %q, want %q", got, c.want)
+		}
+	}
+}
+
+func TestValueAsFloat(t *testing.T) {
+	if Int(7).AsFloat() != 7 {
+		t.Fatal("int AsFloat")
+	}
+	if Bool(true).AsFloat() != 1 {
+		t.Fatal("bool AsFloat")
 	}
 }

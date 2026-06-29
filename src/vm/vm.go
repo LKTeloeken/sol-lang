@@ -34,9 +34,9 @@ type VM struct {
 	pc         int
 	callResult Value
 	catchStack []catchHandler
-	inCatch     bool
-	stdin       io.Reader
-	scriptArgs  []string
+	inCatch    bool
+	stdin      io.Reader
+	scriptArgs []string
 }
 
 // New creates a VM for the given instructions and class metadata.
@@ -86,27 +86,72 @@ func (vm *VM) Run() error {
 		case tac.OpComment, tac.OpLabel:
 			vm.pc++
 		case tac.OpAssign:
-			val, err := vm.resolveValue(ins.Arg1)
+			val, err := vm.resolveOperand(ins.A)
 			if err != nil {
 				return err
 			}
-			if err := vm.store(ins.Result, val); err != nil {
-				return err
-			}
+			vm.storeName(ins.Dst, val)
 			vm.pc++
 		case tac.OpBinOp:
 			val, err := vm.evalBinOp(ins)
 			if err != nil {
 				return err
 			}
-			if err := vm.store(ins.Result, val); err != nil {
+			vm.storeName(ins.Dst, val)
+			vm.pc++
+		case tac.OpUnary:
+			val, err := vm.evalUnary(ins)
+			if err != nil {
 				return err
 			}
+			vm.storeName(ins.Dst, val)
+			vm.pc++
+		case tac.OpFieldGet:
+			val, err := vm.loadField(ins.Obj, ins.Field)
+			if err != nil {
+				return err
+			}
+			vm.storeName(ins.Dst, val)
+			vm.pc++
+		case tac.OpFieldSet:
+			val, err := vm.resolveOperand(ins.A)
+			if err != nil {
+				return err
+			}
+			if err := vm.storeField(ins.Obj, ins.Field, val); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpIndexGet:
+			val, err := vm.loadIndex(ins.Obj, ins.Idx)
+			if err != nil {
+				return err
+			}
+			vm.storeName(ins.Dst, val)
+			vm.pc++
+		case tac.OpIndexSet:
+			val, err := vm.resolveOperand(ins.A)
+			if err != nil {
+				return err
+			}
+			if err := vm.storeIndex(ins.Obj, ins.Idx, val); err != nil {
+				return err
+			}
+			vm.pc++
+		case tac.OpLen:
+			arr, err := vm.resolveOperand(ins.Obj)
+			if err != nil {
+				return err
+			}
+			if arr.Kind != KindArray {
+				return fmt.Errorf("len: operand is not an array")
+			}
+			vm.storeName(ins.Dst, Int(int64(len(arr.Array))))
 			vm.pc++
 		case tac.OpGoto:
 			vm.pc = vm.labels[ins.Label] + 1
 		case tac.OpIfFalse:
-			val, err := vm.resolveValue(ins.Arg1)
+			val, err := vm.resolveOperand(ins.A)
 			if err != nil {
 				return err
 			}
@@ -116,21 +161,17 @@ func (vm *VM) Run() error {
 				vm.pc++
 			}
 		case tac.OpParam:
-			v, err := vm.resolveValue(ins.Arg1)
+			v, err := vm.resolveOperand(ins.A)
 			if err != nil {
 				return err
 			}
 			vm.params = append(vm.params, v)
 			vm.pc++
 		case tac.OpNew:
-			obj := Obj(ins.Arg1)
-			if err := vm.store(ins.Result, obj); err != nil {
-				return err
-			}
+			vm.storeName(ins.Dst, Obj(ins.Sym))
 			vm.pc++
 		case tac.OpCall:
-			n, _ := strconv.Atoi(ins.Arg2)
-			if err := vm.startCall(ins.Arg1, n); err != nil {
+			if err := vm.startCall(ins.Sym, ins.NArgs); err != nil {
 				return err
 			}
 		case tac.OpBuiltin:
@@ -139,8 +180,7 @@ func (vm *VM) Run() error {
 			}
 			vm.pc++
 		case tac.OpArrayLit:
-			n, _ := strconv.Atoi(ins.Arg2)
-			if err := vm.doArrayLit(ins.Result, n); err != nil {
+			if err := vm.doArrayLit(ins.Dst, ins.NArgs); err != nil {
 				return err
 			}
 			vm.pc++
@@ -150,7 +190,7 @@ func (vm *VM) Run() error {
 			}
 			vm.pc++
 		case tac.OpThrow:
-			msg, err := vm.resolveValue(ins.Arg1)
+			msg, err := vm.resolveOperand(ins.A)
 			if err != nil {
 				return err
 			}
@@ -164,7 +204,7 @@ func (vm *VM) Run() error {
 			return fmt.Errorf("flare: %s", text)
 		case tac.OpBeginTry:
 			vm.catchStack = append(vm.catchStack, catchHandler{
-				varName: ins.Arg1,
+				varName: ins.Sym,
 				pc:      vm.labels[ins.Label] + 1,
 			})
 			vm.inCatch = false
@@ -176,8 +216,8 @@ func (vm *VM) Run() error {
 			vm.inCatch = false
 			vm.pc = vm.labels[ins.Label] + 1
 		case tac.OpReturn:
-			if ins.Arg1 != "" {
-				v, err := vm.resolveValue(ins.Arg1)
+			if !ins.A.IsZero() {
+				v, err := vm.resolveOperand(ins.A)
 				if err != nil {
 					return err
 				}
@@ -205,7 +245,7 @@ func (vm *VM) handleThrow(msg Value) bool {
 		h := vm.catchStack[i]
 		vm.catchStack = vm.catchStack[:i]
 		if h.varName != "" {
-			_ = vm.store(h.varName, msg)
+			vm.storeName(h.varName, msg)
 		}
 		vm.pc = h.pc
 		return true
@@ -233,7 +273,8 @@ func (vm *VM) doArrayLit(result string, n int) error {
 	}
 	args := vm.params[len(vm.params)-n:]
 	vm.params = vm.params[:len(vm.params)-n]
-	return vm.store(result, Arr(args...))
+	vm.storeName(result, Arr(args...))
+	return nil
 }
 
 func formatPrintable(v Value) string {
@@ -362,25 +403,11 @@ func (vm *VM) superView(this Value, super *semantic.ClassInfo) Value {
 }
 
 func (vm *VM) evalBinOp(ins tac.Instr) (Value, error) {
-	if ins.Arg1 == "!" {
-		v, err := vm.resolveValue(ins.Arg2)
-		if err != nil {
-			return Null(), err
-		}
-		return Bool(!v.AsBool()), nil
-	}
-	if ins.Arg1 == "-" && ins.Operator == "" {
-		v, err := vm.resolveValue(ins.Arg2)
-		if err != nil {
-			return Null(), err
-		}
-		return Float(-v.AsFloat()), nil
-	}
-	left, err := vm.resolveValue(ins.Arg1)
+	left, err := vm.resolveOperand(ins.A)
 	if err != nil {
 		return Null(), err
 	}
-	right, err := vm.resolveValue(ins.Arg2)
+	right, err := vm.resolveOperand(ins.B)
 	if err != nil {
 		return Null(), err
 	}
@@ -420,6 +447,21 @@ func (vm *VM) evalBinOp(ins tac.Instr) (Value, error) {
 	}
 }
 
+func (vm *VM) evalUnary(ins tac.Instr) (Value, error) {
+	v, err := vm.resolveOperand(ins.A)
+	if err != nil {
+		return Null(), err
+	}
+	switch ins.Operator {
+	case "!":
+		return Bool(!v.AsBool()), nil
+	case "-":
+		return Float(-v.AsFloat()), nil
+	default:
+		return Null(), fmt.Errorf("unknown unary operator %q", ins.Operator)
+	}
+}
+
 func valuesEqual(a, b Value) bool {
 	if a.Kind != b.Kind {
 		if (a.Kind == KindInt || a.Kind == KindFloat) && (b.Kind == KindInt || b.Kind == KindFloat) {
@@ -445,119 +487,110 @@ func valuesEqual(a, b Value) bool {
 	}
 }
 
-func (vm *VM) resolveValue(name string) (Value, error) {
-	name = strings.TrimSpace(name)
-	if name == "call_result" {
+// resolveOperand turns a typed TAC operand into a runtime Value. There is no
+// string parsing: a constant carries its literal directly and a name is a
+// straight variable/temporary lookup.
+func (vm *VM) resolveOperand(o tac.Operand) (Value, error) {
+	switch o.Kind {
+	case tac.OpndConst:
+		return constValue(o), nil
+	case tac.OpndCallResult:
 		return vm.callResult, nil
-	}
-	if strings.HasPrefix(name, `"`) {
-		return parseLiteral(name)
-	}
-	if idx := strings.Index(name, "["); idx > 0 && strings.HasSuffix(name, "]") {
-		base := name[:idx]
-		idxStr := name[idx+1 : len(name)-1]
-		arr, err := vm.resolveValue(base)
-		if err != nil {
-			return Null(), err
-		}
-		iVal, err := vm.resolveValue(idxStr)
-		if err != nil {
-			return Null(), err
-		}
-		i := int(iVal.AsFloat())
-		if arr.Kind != KindArray || i < 0 || i >= len(arr.Array) {
-			return Null(), fmt.Errorf("array index out of range: %s", name)
-		}
-		return arr.Array[i], nil
-	}
-	if strings.Contains(name, ".") {
-		if v, err := parseLiteral(name); err == nil && (v.Kind == KindFloat || v.Kind == KindInt) {
+	case tac.OpndName:
+		if v, ok := vm.lookup(o.Name); ok {
 			return v, nil
 		}
-		return vm.resolveFieldPath(name)
+		// An unset variable reads as null (e.g. `var x int;` with no initializer).
+		return Null(), nil
+	default:
+		return Null(), nil
 	}
-	if v, ok := vm.lookup(name); ok {
-		return v, nil
-	}
-	return parseLiteral(name)
 }
 
-func (vm *VM) resolveFieldPath(path string) (Value, error) {
-	parts := strings.Split(path, ".")
-	root, err := vm.lookupOrLiteral(parts[0])
+func constValue(o tac.Operand) Value {
+	switch o.Lit {
+	case tac.LitInt:
+		return Int(o.Int)
+	case tac.LitFloat:
+		return Float(o.Float)
+	case tac.LitBool:
+		return Bool(o.Bool)
+	case tac.LitStr:
+		return Str(o.Str)
+	default:
+		return Null()
+	}
+}
+
+// storeName assigns to a plain variable/temporary, in the current frame if any.
+func (vm *VM) storeName(name string, val Value) {
+	if len(vm.frames) > 0 {
+		vm.frames[len(vm.frames)-1].locals[name] = val
+	} else {
+		vm.globals[name] = val
+	}
+}
+
+// loadField reads obj.field (objects only; array length is handled by OpLen).
+func (vm *VM) loadField(objOp tac.Operand, field string) (Value, error) {
+	obj, err := vm.resolveOperand(objOp)
 	if err != nil {
 		return Null(), err
 	}
-	cur := root
-	for _, field := range parts[1:] {
-		if cur.Kind == KindArray && field == "length" {
-			return Int(int64(len(cur.Array))), nil
-		}
-		if cur.Kind != KindObject {
-			return Null(), fmt.Errorf("field access on non-object: %s", path)
-		}
-		v, ok := cur.Object.Fields[field]
-		if !ok {
-			return Null(), fmt.Errorf("unknown field %q", field)
-		}
-		cur = v
+	if obj.Kind != KindObject {
+		return Null(), fmt.Errorf("field access %q on non-object", field)
 	}
-	return cur, nil
+	v, ok := obj.Object.Fields[field]
+	if !ok {
+		return Null(), fmt.Errorf("unknown field %q", field)
+	}
+	return v, nil
 }
 
-func (vm *VM) lookupOrLiteral(name string) (Value, error) {
-	if v, ok := vm.lookup(name); ok {
-		return v, nil
+// storeField writes obj.field. The object is a pointer, so the mutation is
+// visible through every alias without re-storing the object.
+func (vm *VM) storeField(objOp tac.Operand, field string, val Value) error {
+	obj, err := vm.resolveOperand(objOp)
+	if err != nil {
+		return err
 	}
-	return parseLiteral(name)
+	if obj.Kind != KindObject {
+		return fmt.Errorf("cannot set field %q on non-object", field)
+	}
+	obj.Object.Fields[field] = val
+	return nil
 }
 
-func (vm *VM) store(target string, val Value) error {
-	target = strings.TrimSpace(target)
-	if idx := strings.Index(target, "["); idx > 0 && strings.HasSuffix(target, "]") {
-		base := target[:idx]
-		idxStr := target[idx+1 : len(target)-1]
-		arr, err := vm.resolveValue(base)
-		if err != nil {
-			return err
-		}
-		iVal, err := vm.resolveValue(idxStr)
-		if err != nil {
-			return err
-		}
-		i := int(iVal.AsFloat())
-		if arr.Kind != KindArray || i < 0 || i >= len(arr.Array) {
-			return fmt.Errorf("array index out of range: %s", target)
-		}
-		arr.Array[i] = val
-		return vm.store(base, arr)
+func (vm *VM) loadIndex(arrOp, idxOp tac.Operand) (Value, error) {
+	arr, err := vm.resolveOperand(arrOp)
+	if err != nil {
+		return Null(), err
 	}
-	if strings.Contains(target, ".") {
-		parts := strings.Split(target, ".")
-		rootName := parts[0]
-		field := parts[len(parts)-1]
-		obj, err := vm.lookupOrLiteral(rootName)
-		if err != nil {
-			return err
-		}
-		if obj.Kind != KindObject {
-			return fmt.Errorf("cannot assign field on non-object")
-		}
-		obj.Object.Fields[field] = val
-		if rootName == "this" || rootName == "radiate" {
-			if len(vm.frames) > 0 {
-				vm.frames[len(vm.frames)-1].locals[rootName] = obj
-			}
-		} else {
-			vm.globals[rootName] = obj
-		}
-		return nil
+	idxVal, err := vm.resolveOperand(idxOp)
+	if err != nil {
+		return Null(), err
 	}
-	if len(vm.frames) > 0 {
-		vm.frames[len(vm.frames)-1].locals[target] = val
-	} else {
-		vm.globals[target] = val
+	i := int(idxVal.AsFloat())
+	if arr.Kind != KindArray || i < 0 || i >= len(arr.Array) {
+		return Null(), fmt.Errorf("array index out of range")
 	}
+	return arr.Array[i], nil
+}
+
+func (vm *VM) storeIndex(arrOp, idxOp tac.Operand, val Value) error {
+	arr, err := vm.resolveOperand(arrOp)
+	if err != nil {
+		return err
+	}
+	idxVal, err := vm.resolveOperand(idxOp)
+	if err != nil {
+		return err
+	}
+	i := int(idxVal.AsFloat())
+	if arr.Kind != KindArray || i < 0 || i >= len(arr.Array) {
+		return fmt.Errorf("array index out of range")
+	}
+	arr.Array[i] = val
 	return nil
 }
 
